@@ -10,13 +10,19 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const built = path.join(here, "..", "dist", "cli.js");
+const source = path.join(here, "..", "src", "cli.ts");
 
-if (fs.existsSync(built)) {
+// The published package ships dist/ without src/, so the presence of src/ is
+// exactly the signal for a dev checkout. Preferring source there keeps a stale
+// dist/ from silently shadowing edits (run `node dist/cli.js` to exercise a
+// build deliberately).
+const hasSource = fs.existsSync(source);
+
+if (!hasSource && fs.existsSync(built)) {
   await import(pathToFileURL(built).href);
 } else {
   const { spawn } = await import("node:child_process");
-  const source = path.join(here, "..", "src", "cli.ts");
-  if (!fs.existsSync(source)) {
+  if (!hasSource) {
     process.stderr.write("vantage: no build found and no source to fall back to\n");
     process.exit(1);
   }

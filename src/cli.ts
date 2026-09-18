@@ -25,6 +25,7 @@ import { startMockAnthropic } from "./dev/mock-anthropic.ts";
 import { QuotaWatcher } from "./ratelimit.ts";
 import type { QuotaWarning } from "./ratelimit.ts";
 import { renderTimeline, listSessions } from "./replay.ts";
+import { renderLive, newestSessionId, readSessionEvents } from "./watch.ts";
 import { compileMemory, initMemory, addNote, memoryDir } from "./memory.ts";
 import { loadPolicy, PolicyWatcher } from "./policy.ts";
 import {
@@ -92,6 +93,7 @@ function printHelp(): void {
     `vantage — control & transparency layer for AI-coding CLIs\n\n` +
       `Usage:\n` +
       `  vantage run [--isolate] [--no-memory] <agent> [-- <agent args...>]\n` +
+      `  vantage watch [sessionId]\n` +
       `  vantage sessions\n` +
       `  vantage replay <sessionId>\n` +
       `  vantage review <sessionId>\n` +
@@ -378,6 +380,49 @@ async function cmdSessions(): Promise<number> {
   return 0;
 }
 
+async function cmdWatch(argv: string[]): Promise<number> {
+  const cwd = process.cwd();
+  const pinned = argv[0];
+  const interval = 500;
+
+  // Renders into THIS terminal only — the agent's own terminal is never
+  // touched, which is the whole point of watching from a second pane.
+  const draw = (body: string): void => {
+    process.stdout.write("\x1b[H\x1b[J" + body + "\n"); // home, clear to end
+  };
+
+  let current = pinned ?? newestSessionId(cwd);
+  if (!current) draw("waiting for a session…  (start one with `vantage run <agent>`)");
+
+  return await new Promise<number>((resolve) => {
+    const stop = (): void => {
+      clearInterval(timer);
+      process.stdout.write("\n");
+      resolve(0);
+    };
+    process.on("SIGINT", stop);
+
+    const timer = setInterval(() => {
+      // Without a pinned id, follow whichever session is newest, so you can
+      // start watching before launching the agent.
+      if (!pinned) {
+        const newest = newestSessionId(cwd);
+        if (newest && newest !== current) current = newest;
+      }
+      if (!current) {
+        draw("waiting for a session…  (start one with `vantage run <agent>`)");
+        return;
+      }
+      const events = readSessionEvents(cwd, current);
+      if (events.length === 0) return;
+      draw(renderLive(events, { sessionId: current, color: process.stdout.isTTY ?? false }));
+
+      // A pinned session that has finished has nothing more to show.
+      if (pinned && events.some((e) => e.type === "session_end")) stop();
+    }, interval);
+  });
+}
+
 async function cmdPolicy(): Promise<number> {
   const cwd = process.cwd();
   const policy = loadPolicy(cwd);
@@ -486,6 +531,9 @@ async function main(): Promise<void> {
       break;
     case "policy":
       process.exit(await cmdPolicy());
+      break;
+    case "watch":
+      process.exit(await cmdWatch(rest));
       break;
     case "demo":
       process.exit(await cmdDemo());

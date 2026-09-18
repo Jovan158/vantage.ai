@@ -75,7 +75,7 @@ Type-Stripping zurück.
 ```bash
 # Aus dem Checkout entwickeln
 npm install          # nur TypeScript + @types/node (keine Laufzeit-Deps)
-npm test             # 40 Tests
+npm test             # 44 Tests
 npm run typecheck    # tsc --noEmit über src + test
 npm run build        # -> dist/
 npm pack             # baut via prepack und schnürt das Tarball
@@ -86,12 +86,14 @@ npm pack             # baut via prepack und schnürt das Tarball
 ### Ausprobieren (Node ≥ 22.6, keine Installation nötig)
 
 ```bash
-npm test          # 16 Tests: Proxy-Transparenz, Usage, Rate-Limit, Quota, Git-Isolation
+npm test          # 44 Tests: Proxy-Transparenz & Resilienz, Usage (Anthropic+OpenAI),
+                  # Rate-Limit, Quota, Git-Isolation, Replay, Watch, Memory, Policy
 npm run demo      # komplette Kette gegen einen Mock-Upstream (kein API-Key nötig)
 
 node bin/vantage.mjs --help
 node bin/vantage.mjs run claude -- -p "..."             # wrappen + metern
 node bin/vantage.mjs run --isolate claude -- -p "..."   # isoliert + aggregierter Diff
+node bin/vantage.mjs watch                              # Live-Ansicht (2. Terminal)
 node bin/vantage.mjs sessions                           # vergangene Sessions auflisten
 node bin/vantage.mjs replay <sessionId>                 # Session als Timeline abspielen
 node bin/vantage.mjs review <sessionId>                 # Diff einer Session ansehen
@@ -131,6 +133,29 @@ Policy via `vantage policy` ansehen, konfigurieren über `.vantage/policy.json` 
 **Bewusst noch ohne Enforcement** (kein Blocken) — das braucht einen
 request-mutierenden Gate oder native Agent-Hooks (Konzept §6b/c); diese Schicht
 liefert die granulare *Sichtbarkeit*, auf der Enforcement später aufsetzt.
+
+**Live-Ansicht im zweiten Terminal — bewusst kein Overlay.** `vantage watch`
+zeigt die laufende Session live (Totals, Kosten, Rate, Quota, letzter Turn,
+Aktionen) und folgt automatisch einer Session, die erst nach dem Start beginnt:
+
+```
+● vantage · claude-code · running · 12s
+  turns  2   in 66   out 42   cache 66kr/0w
+  cost   ~$0.0208 (est.)   rate 1.8k/min
+  quota 5h 34% used reset 4h40m · 7d 16% used
+
+  latest turn claude-sonnet-5
+    prompt add a retry to the fetch helper
+    reply  I'll add exponential backoff.
+    tools  Read, Edit
+```
+
+Warum kein Overlay über dem Agent? Der Agent besitzt sein Terminal (`stdio:
+"inherit"`) und bringt eine eigene TUI mit. Ein Overlay hieße: Vantage übernimmt
+und rendert neu — genau die Bruchstelle aus Konzept §6b („beobachten, nicht neu
+rendern"), die die UI des gewrappten Tools zerstören kann. Die Live-Ansicht läuft
+deshalb in einem eigenen Terminal/tmux-Pane, gespeist aus dem append-only
+Event-Log: **null Risiko für das Agent-Terminal, null Abhängigkeiten.**
 
 **Session-Replay (Problem ③).** `vantage replay <id>` rendert den Event-Log als
 lesbare Timeline — jeder Turn mit Modell/Tokens/Kosten **und Inhalt** (letzter
@@ -183,6 +208,7 @@ Proxy getestet, die Anthropic-Kette zusätzlich gegen echten `api.anthropic.com`
 | `src/events.ts` | Append-only Event-Log (JSONL) |
 | `src/git.ts` | Git-Session-Isolation (Worktree/Branch, aggregierter Diff) |
 | `src/replay.ts` | Session-Replay: Event-Log → Timeline + Session-Liste |
+| `src/watch.ts` | Live-Ansicht fürs zweite Terminal (folgt dem Event-Log) |
 | `src/turn.ts` | Turn-Inhalt (Prompt/Antwort/Tools) + Redaction |
 | `src/memory.ts` | Projektgedächtnis (`.vantage/memory/`, Kompilierung/Injektion) |
 | `src/policy.ts` | Aktionstyp-Klassifizierung + Policy (Beobachtungs-Schicht ②) |
