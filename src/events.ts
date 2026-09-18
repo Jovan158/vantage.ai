@@ -23,7 +23,14 @@ export interface SessionEvent {
   exitCode?: number | null;
 }
 
-export type VantageEvent = UsageEvent | SessionEvent;
+export interface RateLimitEvent {
+  ts: string;
+  type: "ratelimit";
+  path: string;
+  raw: Record<string, string>;
+}
+
+export type VantageEvent = UsageEvent | SessionEvent | RateLimitEvent;
 
 export class EventLog {
   readonly filePath: string;

@@ -68,6 +68,17 @@ async function cmdRun(argv: string[]): Promise<number> {
       eventLog.append(e);
       meter.add(e);
       log(meter.statusLine());
+      const rl = meter.rateLimitLine();
+      if (rl) log(rl);
+    },
+    onRateLimit: (snapshot) => {
+      meter.setRateLimit(snapshot);
+      eventLog.append({
+        ts: new Date().toISOString(),
+        type: "ratelimit",
+        path: "/",
+        raw: snapshot.raw,
+      });
     },
   });
 
@@ -99,6 +110,8 @@ async function cmdRun(argv: string[]): Promise<number> {
         `session end · ${t.requests} request(s) · in ${t.input} · out ${t.output} · ` +
           `cache ${t.cacheRead} · ~$${t.costUsd.toFixed(4)} (est.)`
       );
+      const rl = meter.rateLimitLine();
+      if (rl) log(rl);
       log(`event log: ${eventLog.filePath}`);
       await proxy.close();
       resolve(code ?? 0);

@@ -20,13 +20,21 @@ Transparenz, Session-Replay und ein granulares Approval-Gate.
 **Status: an echtem Traffic verifiziert.** `vantage run claude` wrappt die echte
 Claude-Code-CLI, leitet an `api.anthropic.com` durch (der Proxy respektiert
 `HTTPS_PROXY`/`NO_PROXY`) und extrahiert reale Usage — inkl. gzip/br-Dekompression
-der beobachteten Kopie und Metering von Streaming- *und* JSON-Antworten:
+der beobachteten Kopie und Metering von Streaming- *und* JSON-Antworten. Zusätzlich
+liest der Proxy die **Rate-Limit-Header** aus und zeigt eine echte Limit-Prognose:
 
 ```
 [vantage] session end · 2 request(s) · in 66 · out 45 · cache 66414 · ~$0.0208 (est.)
+[vantage] quota 5h 53% used reset 1h50m · 7d 6% used reset 156h50m
 ```
 
-Diagnose mit `VANTAGE_DEBUG=1` (loggt Upstream-Status, Content-Type, Encoding).
+Die Quota-Zeile deckt beide Anbieter-Formen ab: **Unified-Fenster** (Abo/Pro-Max,
+was Claude Code real zurückgibt — 5h-/7d-Auslastung + Reset) und die **klassischen
+Per-Key-Buckets** (API-Key-Billing — requests/tokens remaining). Genau der
+Abo-Quota-Fall, den reine Token-Zählung nicht abbilden kann.
+
+Diagnose mit `VANTAGE_DEBUG=1` (loggt Upstream-Status, Content-Type, Encoding und
+alle Rate-Limit-Header).
 
 ### Ausprobieren (Node ≥ 22.6, keine Installation nötig)
 
@@ -49,6 +57,8 @@ Build-Schritt; ein `dist/`-Build (`npm run build`) ist der Distributionspfad.
 | `src/proxy.ts` | Transparenter Streaming-Reverse-Proxy (Schicht B) |
 | `src/usage.ts` | SSE-Usage-Extraktor (Tokens aus dem Stream) |
 | `src/meter.ts` | Aggregierte Totals + Rate + Statuszeile |
+| `src/ratelimit.ts` | Rate-Limit-Header → Limit-Prognose (unified + klassisch) |
+| `src/upstream.ts` | Egress-Connector (`HTTPS_PROXY`/`NO_PROXY`, CONNECT-Tunnel) |
 | `src/events.ts` | Append-only Event-Log (JSONL) |
 | `src/agents/` | Agent-Adapter (Claude Code, Codex, Aider) |
 | `src/cli.ts` | `vantage run` / `vantage demo` |

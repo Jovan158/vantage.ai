@@ -14,6 +14,8 @@ import { createUsageExtractor, extractUsageFromJson } from "./usage.ts";
 import type { TokenUsage } from "./usage.ts";
 import { estimateCostUsd } from "./pricing.ts";
 import { upstreamTransport } from "./upstream.ts";
+import { extractRateLimit } from "./ratelimit.ts";
+import type { RateLimitSnapshot } from "./ratelimit.ts";
 import type { UsageEvent } from "./events.ts";
 
 const DEBUG = process.env.VANTAGE_DEBUG === "1";
@@ -47,6 +49,7 @@ export interface ProxyOptions {
   upstream: string;
   port?: number;
   onUsage?: (event: UsageEvent) => void;
+  onRateLimit?: (snapshot: RateLimitSnapshot) => void;
 }
 
 export interface RunningProxy {
@@ -89,6 +92,15 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
 
         if (DEBUG) {
           log(`upstream ${upstreamRes.statusCode} ${targetPath} · type=${contentType || "?"} · enc=${encoding || "none"}`);
+        }
+
+        // Rate-limit headers are available immediately (no body needed).
+        const rl = extractRateLimit(upstreamRes.headers);
+        if (rl) {
+          if (DEBUG) log(`ratelimit headers: ${JSON.stringify(rl.raw)}`);
+          opts.onRateLimit?.(rl);
+        } else if (DEBUG && isMessages) {
+          log("ratelimit headers: none present on this response");
         }
 
         // The extractor must see PLAINTEXT, but the client must get the EXACT

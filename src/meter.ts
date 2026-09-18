@@ -6,6 +6,8 @@
 // real per-token cost, only quota consumption.
 
 import type { UsageEvent } from "./events.ts";
+import { formatRateLimit } from "./ratelimit.ts";
+import type { RateLimitSnapshot } from "./ratelimit.ts";
 
 export interface MeterTotals {
   requests: number;
@@ -28,6 +30,15 @@ export class Meter {
   // (timestampMs, cumulativeOutput) samples for a rolling rate.
   private samples: Array<[number, number]> = [];
   private readonly windowMs = 60_000;
+  private rateLimit: RateLimitSnapshot | null = null;
+
+  setRateLimit(snapshot: RateLimitSnapshot): void {
+    this.rateLimit = snapshot;
+  }
+
+  rateLimitLine(nowMs = Date.now()): string | null {
+    return this.rateLimit ? formatRateLimit(this.rateLimit, nowMs) : null;
+  }
 
   add(e: UsageEvent, nowMs = Date.now()): void {
     this.totals.requests += 1;
