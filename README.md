@@ -68,8 +68,21 @@ npm run demo      # komplette Kette gegen einen Mock-Upstream (kein API-Key nöt
 node bin/vantage.mjs --help
 node bin/vantage.mjs run claude -- -p "..."             # wrappen + metern
 node bin/vantage.mjs run --isolate claude -- -p "..."   # isoliert + aggregierter Diff
+node bin/vantage.mjs sessions                           # vergangene Sessions auflisten
+node bin/vantage.mjs replay <sessionId>                 # Session als Timeline abspielen
 node bin/vantage.mjs review <sessionId>                 # Diff einer Session ansehen
 node bin/vantage.mjs discard <sessionId>                # Worktree + Branch verwerfen
+```
+
+**Session-Replay (Problem ③).** `vantage replay <id>` rendert den Event-Log als
+lesbare Timeline — Turns mit Modell/Tokens/Kosten, Quota-Verlauf und Zusammenfassung:
+
+```
+● session start · agent claude-code
+ +2.5s ◔ quota 5h 70% used reset 1h38m · 7d 8% used
+ +2.5s ▸ turn 1 claude-sonnet-5 · in 2 · out 4 · cache 60k · $0.0181
+ +3.6s ▸ turn 2 claude-sonnet-5 · in 64 · out 38 · cache 6.2k · $0.0026
+ +4.0s ● session end · 2 turn(s) · in 66 · out 42 · cache 66k · ~$0.0208 (est.) · exit 0
 ```
 
 `vantage demo` fährt die ganze Orchestrierung vor: Env-Injektion → Agent-Spawn
@@ -87,6 +100,7 @@ Build-Schritt; ein `dist/`-Build (`npm run build`) ist der Distributionspfad.
 | `src/upstream.ts` | Egress-Connector (`HTTPS_PROXY`/`NO_PROXY`, CONNECT-Tunnel) |
 | `src/events.ts` | Append-only Event-Log (JSONL) |
 | `src/git.ts` | Git-Session-Isolation (Worktree/Branch, aggregierter Diff) |
+| `src/replay.ts` | Session-Replay: Event-Log → Timeline + Session-Liste |
 | `src/agents/` | Agent-Adapter (Claude Code, Codex, Aider) |
-| `src/cli.ts` | `vantage run [--isolate]` / `review` / `discard` / `demo` |
+| `src/cli.ts` | `run [--isolate]` / `sessions` / `replay` / `review` / `discard` / `demo` |
 | `spike/` | Ursprünglicher Wegwerf-Durchstich, der die Kernannahme bewies |

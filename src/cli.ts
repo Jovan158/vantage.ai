@@ -24,6 +24,7 @@ import { resolveAdapter, knownAgents } from "./agents/index.ts";
 import { startMockAnthropic } from "./dev/mock-anthropic.ts";
 import { QuotaWatcher } from "./ratelimit.ts";
 import type { QuotaWarning } from "./ratelimit.ts";
+import { renderTimeline, listSessions } from "./replay.ts";
 import {
   isGitRepo,
   isDirty,
@@ -89,6 +90,8 @@ function printHelp(): void {
     `vantage — control & transparency layer for AI-coding CLIs\n\n` +
       `Usage:\n` +
       `  vantage run [--isolate] <agent> [-- <agent args...>]\n` +
+      `  vantage sessions\n` +
+      `  vantage replay <sessionId>\n` +
       `  vantage review <sessionId>\n` +
       `  vantage discard <sessionId>\n` +
       `  vantage demo\n` +
@@ -312,6 +315,43 @@ async function cmdDiscard(argv: string[]): Promise<number> {
   return 0;
 }
 
+async function cmdReplay(argv: string[]): Promise<number> {
+  const sessionId = argv[0];
+  const cwd = process.cwd();
+  if (!sessionId) {
+    log("usage: vantage replay <sessionId>  (see: vantage sessions)");
+    return 1;
+  }
+  const logPath = sessionEventsPath(cwd, sessionId);
+  if (!fs.existsSync(logPath)) {
+    log(`no session "${sessionId}" found under .vantage/sessions/`);
+    return 1;
+  }
+  const events = new EventLog(logPath).readAll();
+  process.stdout.write(renderTimeline(events, process.stdout.isTTY ?? false) + "\n");
+  return 0;
+}
+
+async function cmdSessions(): Promise<number> {
+  const cwd = process.cwd();
+  const sessions = listSessions(cwd);
+  if (sessions.length === 0) {
+    log("no sessions recorded yet — run `vantage run <agent>` first");
+    return 0;
+  }
+  for (const s of sessions) {
+    const flags = s.isolated ? " [isolated]" : "";
+    const when = s.startedAt ? s.startedAt.replace("T", " ").slice(0, 19) : "?";
+    process.stdout.write(
+      `${s.sessionId}${flags}\n` +
+        `  ${when} · ${s.agent ?? "?"} · ${s.requests} turn(s) · ` +
+        `out ${s.output} · ~$${s.costUsd.toFixed(4)} (est.)\n`
+    );
+  }
+  log(`replay one with: vantage replay <sessionId>`);
+  return 0;
+}
+
 async function cmdDemo(): Promise<number> {
   log("demo: proving the full chain against a mock upstream (no API key needed)");
   const mock = await startMockAnthropic();
@@ -358,6 +398,12 @@ async function main(): Promise<void> {
       break;
     case "discard":
       process.exit(await cmdDiscard(rest));
+      break;
+    case "sessions":
+      process.exit(await cmdSessions());
+      break;
+    case "replay":
+      process.exit(await cmdReplay(rest));
       break;
     case "demo":
       process.exit(await cmdDemo());
