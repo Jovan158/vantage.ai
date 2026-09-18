@@ -45,14 +45,31 @@ Schwelle konfigurierbar über `VANTAGE_QUOTA_WARN` (Prozent `80` oder Anteil `0.
 Default 90 %). Diagnose mit `VANTAGE_DEBUG=1` (loggt Upstream-Status, Content-Type,
 Encoding und alle Rate-Limit-Header).
 
+**Git-Session-Isolation (Problem ④).** Mit `--isolate` läuft der Agent in einem
+dedizierten Git-Worktree auf Branch `vantage/<session>` — dein Arbeitsverzeichnis
+bleibt unberührt. Am Ende committet Vantage die Änderungen auf den Branch und zeigt
+einen **aggregierten Diff**; danach entscheidest du mergen oder verwerfen:
+
+```
+[vantage] isolated on branch vantage/…_y6rf (base bbb2b2fc) · worktree .vantage/worktrees/…
+[vantage] isolation: 1 file(s) changed, +1/-0 on vantage/…_y6rf
+[vantage]   greeting.txt (+1 -0)
+[vantage] review:  vantage review …_y6rf
+[vantage] merge:   git merge --no-ff vantage/…_y6rf
+[vantage] discard: vantage discard …_y6rf
+```
+
 ### Ausprobieren (Node ≥ 22.6, keine Installation nötig)
 
 ```bash
-npm test          # beweist: Proxy streamt transparent UND extrahiert Usage
+npm test          # 16 Tests: Proxy-Transparenz, Usage, Rate-Limit, Quota, Git-Isolation
 npm run demo      # komplette Kette gegen einen Mock-Upstream (kein API-Key nötig)
 
 node bin/vantage.mjs --help
-node bin/vantage.mjs run claude -- -p "..."   # echten Agent wrappen + metern
+node bin/vantage.mjs run claude -- -p "..."             # wrappen + metern
+node bin/vantage.mjs run --isolate claude -- -p "..."   # isoliert + aggregierter Diff
+node bin/vantage.mjs review <sessionId>                 # Diff einer Session ansehen
+node bin/vantage.mjs discard <sessionId>                # Worktree + Branch verwerfen
 ```
 
 `vantage demo` fährt die ganze Orchestrierung vor: Env-Injektion → Agent-Spawn
@@ -69,6 +86,7 @@ Build-Schritt; ein `dist/`-Build (`npm run build`) ist der Distributionspfad.
 | `src/ratelimit.ts` | Rate-Limit-Header → Limit-Prognose (unified + klassisch) |
 | `src/upstream.ts` | Egress-Connector (`HTTPS_PROXY`/`NO_PROXY`, CONNECT-Tunnel) |
 | `src/events.ts` | Append-only Event-Log (JSONL) |
+| `src/git.ts` | Git-Session-Isolation (Worktree/Branch, aggregierter Diff) |
 | `src/agents/` | Agent-Adapter (Claude Code, Codex, Aider) |
-| `src/cli.ts` | `vantage run` / `vantage demo` |
+| `src/cli.ts` | `vantage run [--isolate]` / `review` / `discard` / `demo` |
 | `spike/` | Ursprünglicher Wegwerf-Durchstich, der die Kernannahme bewies |

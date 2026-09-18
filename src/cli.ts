@@ -8,6 +8,7 @@
 // The proxy/usage core is proven in spike/proxy-passthrough and ported to src/.
 
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startProxy } from "./proxy.ts";
@@ -15,6 +16,7 @@ import { Meter } from "./meter.ts";
 import {
   EventLog,
   newSessionId,
+  sessionDir,
   sessionEventsPath,
   type UsageEvent,
 } from "./events.ts";
@@ -22,6 +24,43 @@ import { resolveAdapter, knownAgents } from "./agents/index.ts";
 import { startMockAnthropic } from "./dev/mock-anthropic.ts";
 import { QuotaWatcher } from "./ratelimit.ts";
 import type { QuotaWarning } from "./ratelimit.ts";
+import {
+  isGitRepo,
+  isDirty,
+  addSessionWorktree,
+  commitSessionWork,
+  sessionDiff,
+  removeSessionWorktree,
+  gitSafe,
+  type Worktree,
+} from "./git.ts";
+
+interface SessionMeta {
+  sessionId: string;
+  agent: string;
+  cwd: string;
+  isolated: boolean;
+  branch?: string;
+  baseSha?: string;
+  worktreePath?: string;
+  createdAt: string;
+}
+
+function writeMeta(cwd: string, meta: SessionMeta): void {
+  const dir = sessionDir(cwd, meta.sessionId);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "meta.json"), JSON.stringify(meta, null, 2));
+}
+
+function readMeta(cwd: string, sessionId: string): SessionMeta | null {
+  const p = path.join(sessionDir(cwd, sessionId), "meta.json");
+  if (!fs.existsSync(p)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8")) as SessionMeta;
+  } catch {
+    return null;
+  }
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -49,15 +88,32 @@ function printHelp(): void {
   process.stdout.write(
     `vantage — control & transparency layer for AI-coding CLIs\n\n` +
       `Usage:\n` +
-      `  vantage run <agent> [-- <agent args...>]\n` +
+      `  vantage run [--isolate] <agent> [-- <agent args...>]\n` +
+      `  vantage review <sessionId>\n` +
+      `  vantage discard <sessionId>\n` +
       `  vantage demo\n` +
       `  vantage --help\n\n` +
-      `Agents: ${knownAgents().join(", ")}\n`
+      `Agents: ${knownAgents().join(", ")}\n\n` +
+      `--isolate runs the agent in a dedicated git worktree/branch so your\n` +
+      `working tree is untouched; review or discard the changes afterwards.\n`
   );
 }
 
 async function cmdRun(argv: string[]): Promise<number> {
-  const agentName = argv[0];
+  // Leading vantage-level flags come before the agent name.
+  let isolate = false;
+  const rest = [...argv];
+  while (rest[0]?.startsWith("--")) {
+    const flag = rest.shift();
+    if (flag === "--isolate") isolate = true;
+    else if (flag === "--no-isolate") isolate = false;
+    else {
+      log(`unknown flag "${flag}"`);
+      return 1;
+    }
+  }
+
+  const agentName = rest[0];
   if (!agentName) {
     log("missing agent name. try: vantage run claude");
     return 1;
@@ -69,8 +125,9 @@ async function cmdRun(argv: string[]): Promise<number> {
   }
 
   // Everything after "--" (or after the agent name) is passed to the agent.
-  const sep = argv.indexOf("--");
-  const agentArgs = sep === -1 ? argv.slice(1) : argv.slice(sep + 1);
+  const afterAgent = rest.slice(1);
+  const sep = afterAgent.indexOf("--");
+  const agentArgs = sep === -1 ? afterAgent : afterAgent.slice(sep + 1);
 
   const upstream = process.env.VANTAGE_UPSTREAM ?? adapter.defaultUpstream;
   const cwd = process.cwd();
@@ -78,6 +135,34 @@ async function cmdRun(argv: string[]): Promise<number> {
   const eventLog = new EventLog(sessionEventsPath(cwd, sessionId));
   const meter = new Meter();
   const quota = new QuotaWatcher(warnThreshold());
+
+  // Optional git isolation: run the agent in a dedicated worktree/branch so the
+  // user's working tree is never touched (CONCEPT.md problem ④).
+  let worktree: Worktree | null = null;
+  let childCwd = cwd;
+  if (isolate) {
+    if (!isGitRepo(cwd)) {
+      log("--isolate requires a git repository (none found here)");
+      return 1;
+    }
+    if (isDirty(cwd)) {
+      log("note: working tree has uncommitted changes — isolation branches from HEAD, so those are not included");
+    }
+    worktree = addSessionWorktree(cwd, sessionId);
+    childCwd = worktree.path;
+    log(`isolated on branch ${worktree.branch} (base ${worktree.baseSha.slice(0, 8)}) · worktree ${path.relative(cwd, worktree.path)}`);
+  }
+
+  writeMeta(cwd, {
+    sessionId,
+    agent: adapter.id,
+    cwd,
+    isolated: isolate,
+    branch: worktree?.branch,
+    baseSha: worktree?.baseSha,
+    worktreePath: worktree?.path,
+    createdAt: new Date().toISOString(),
+  });
 
   eventLog.append({ ts: new Date().toISOString(), type: "session_start", agent: adapter.id });
 
@@ -106,6 +191,7 @@ async function cmdRun(argv: string[]): Promise<number> {
   log(`proxy ${proxy.url} → ${adapter.command} ${agentArgs.join(" ")}`.trimEnd());
 
   const child = spawn(adapter.command, agentArgs, {
+    cwd: childCwd,
     stdio: "inherit",
     env: { ...process.env, ...adapter.proxyEnv(proxy.url) },
   });
@@ -133,10 +219,97 @@ async function cmdRun(argv: string[]): Promise<number> {
       const rl = meter.rateLimitLine();
       if (rl) log(rl);
       log(`event log: ${eventLog.filePath}`);
+
+      if (worktree) reportIsolatedChanges(cwd, sessionId, worktree, adapter.id);
+
       await proxy.close();
       resolve(code ?? 0);
     });
   });
+}
+
+function fmtFileLine(f: { path: string; added: number; removed: number }): string {
+  const a = f.added < 0 ? "bin" : `+${f.added}`;
+  const r = f.removed < 0 ? "" : `-${f.removed}`;
+  return `  ${f.path} (${a}${r ? " " + r : ""})`;
+}
+
+// Commit the agent's work to the isolation branch and print an aggregated diff.
+function reportIsolatedChanges(
+  cwd: string,
+  sessionId: string,
+  worktree: Worktree,
+  agentId: string
+): void {
+  const committed = commitSessionWork(worktree.path, `vantage: ${agentId} session ${sessionId}`);
+  if (!committed) {
+    log("isolation: no changes made — removing empty worktree/branch");
+    removeSessionWorktree(cwd, worktree.path, worktree.branch);
+    return;
+  }
+
+  const diff = sessionDiff(worktree.path, worktree.baseSha);
+  fs.writeFileSync(path.join(sessionDir(cwd, sessionId), "changes.patch"), diff.patch);
+
+  log(`isolation: ${diff.files.length} file(s) changed, +${diff.added}/-${diff.removed} on ${worktree.branch}`);
+  for (const f of diff.files.slice(0, 10)) log(fmtFileLine(f));
+  if (diff.files.length > 10) log(`  … and ${diff.files.length - 10} more`);
+  log(`review:  vantage review ${sessionId}`);
+  log(`merge:   git merge --no-ff ${worktree.branch}`);
+  log(`discard: vantage discard ${sessionId}`);
+}
+
+async function cmdReview(argv: string[]): Promise<number> {
+  const sessionId = argv[0];
+  if (!sessionId) {
+    log("usage: vantage review <sessionId>");
+    return 1;
+  }
+  const cwd = process.cwd();
+  const meta = readMeta(cwd, sessionId);
+  if (!meta) {
+    log(`no session "${sessionId}" found under .vantage/sessions/`);
+    return 1;
+  }
+  if (!meta.isolated || !meta.branch || !meta.baseSha) {
+    log(`session ${sessionId} was not run with --isolate (nothing to review)`);
+    return 1;
+  }
+
+  const branchExists = gitSafe(cwd, ["rev-parse", "--verify", meta.branch]).ok;
+  if (branchExists) {
+    const stat = gitSafe(cwd, ["diff", "--stat", meta.baseSha, meta.branch]);
+    log(`branch ${meta.branch} vs base ${meta.baseSha.slice(0, 8)}:`);
+    process.stdout.write(stat.stdout + "\n");
+    log(`full diff: git diff ${meta.baseSha.slice(0, 8)} ${meta.branch}`);
+    log(`merge:     git merge --no-ff ${meta.branch}`);
+    log(`discard:   vantage discard ${sessionId}`);
+  } else {
+    const patch = path.join(sessionDir(cwd, sessionId), "changes.patch");
+    if (fs.existsSync(patch)) {
+      log(`branch is gone; saved patch: ${patch}`);
+    } else {
+      log(`nothing to review for session ${sessionId}`);
+    }
+  }
+  return 0;
+}
+
+async function cmdDiscard(argv: string[]): Promise<number> {
+  const sessionId = argv[0];
+  if (!sessionId) {
+    log("usage: vantage discard <sessionId>");
+    return 1;
+  }
+  const cwd = process.cwd();
+  const meta = readMeta(cwd, sessionId);
+  if (!meta || !meta.isolated || !meta.branch || !meta.worktreePath) {
+    log(`session ${sessionId} has no isolation worktree to discard`);
+    return 1;
+  }
+  removeSessionWorktree(cwd, meta.worktreePath, meta.branch);
+  log(`discarded worktree and branch ${meta.branch}`);
+  return 0;
 }
 
 async function cmdDemo(): Promise<number> {
@@ -179,6 +352,12 @@ async function main(): Promise<void> {
   switch (cmd) {
     case "run":
       process.exit(await cmdRun(rest));
+      break;
+    case "review":
+      process.exit(await cmdReview(rest));
+      break;
+    case "discard":
+      process.exit(await cmdDiscard(rest));
       break;
     case "demo":
       process.exit(await cmdDemo());

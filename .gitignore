@@ -2,5 +2,6 @@ node_modules/
 dist/
 *.log
 
-# Vantage runtime session logs (memory under .vantage/memory/ IS committed)
+# Vantage runtime state (memory under .vantage/memory/ IS committed)
 .vantage/sessions/
+.vantage/worktrees/

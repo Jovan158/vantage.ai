@@ -54,9 +54,13 @@ export class EventLog {
   }
 }
 
-// Sessions live under .vantage/sessions/<id>/events.jsonl in the target repo.
+// Sessions live under .vantage/sessions/<id>/ in the target repo.
+export function sessionDir(cwd: string, sessionId: string): string {
+  return path.join(cwd, ".vantage", "sessions", sessionId);
+}
+
 export function sessionEventsPath(cwd: string, sessionId: string): string {
-  return path.join(cwd, ".vantage", "sessions", sessionId, "events.jsonl");
+  return path.join(sessionDir(cwd, sessionId), "events.jsonl");
 }
 
 export function newSessionId(now = new Date()): string {
