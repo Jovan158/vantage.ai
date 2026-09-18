@@ -47,16 +47,17 @@ jobs:
 
       - run: npm ci
 
-      - name: Pack (runs the build via prepack)
+      # Pack and install in one step, taking the tarball name from npm itself.
+      # Globbing for a hardcoded name couples CI to the package name — renaming
+      # the package silently broke this once already.
+      - name: Pack (runs the build via prepack) and install into a clean project
         run: |
           mkdir -p /tmp/pkg
-          npm pack --pack-destination /tmp/pkg
-
-      - name: Install the tarball into a clean project
-        run: |
+          TARBALL=$(npm pack --pack-destination /tmp/pkg | tail -1)
+          echo "packed: $TARBALL"
           mkdir -p /tmp/consumer && cd /tmp/consumer
           npm init -y >/dev/null
-          npm install /tmp/pkg/vantage-*.tgz
+          npm install "/tmp/pkg/$TARBALL"
 
       - name: Smoke-test the installed CLI
         run: |

@@ -521,12 +521,16 @@ async function cmdHook(): Promise<number> {
 async function cmdPolicy(): Promise<number> {
   const cwd = process.cwd();
   const policy = loadPolicy(cwd);
-  log("action-type policy (observe-only — 'warn' surfaces a notice, nothing is blocked):");
+  log("action-type policy — allow · warn (notice only) · ask (approval) · deny (blocked):");
   for (const [type, level] of Object.entries(policy)) {
-    const mark = level === "warn" ? "\x1b[33m⚠\x1b[0m" : " ";
+    const mark =
+      level === "deny" ? "\x1b[31m⛔\x1b[0m" : level === "ask" ? "\x1b[33m?\x1b[0m" : level === "warn" ? "\x1b[33m⚠\x1b[0m" : " ";
     process.stdout.write(`  ${mark} ${type.padEnd(8)} ${level}\n`);
   }
-  log("configure via .vantage/policy.json or VANTAGE_POLICY=\"shell:warn,network:allow\"");
+  if (needsEnforcement(policy)) {
+    log("ask/deny are enforced through the agent's PreToolUse hook (agents without hooks stay observe-only)");
+  }
+  log("configure via .vantage/policy.json or VANTAGE_POLICY=\"shell:deny,network:ask\"");
   return 0;
 }
 
