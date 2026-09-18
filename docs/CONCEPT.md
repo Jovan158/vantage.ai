@@ -4,8 +4,13 @@
 > die Warte, von der aus man bestehende CLI-Agents (Claude Code, Codex CLI, Aider,
 > Gemini CLI …) sieht und steuert. Aufruf im Folgenden: `vantage run <agent>`.
 
-Status: **Konzept**. Gewählter Prototyp-Einstieg: **Token-/Cost-Meter (Proxy)** —
-siehe [§7](#7-nächste-schritte--prototyp).
+Status: **umgesetzt** — alle fünf Probleme haben Funktionalität, an echtem Traffic
+verifiziert. Umsetzungsstand, bewusste Abweichungen vom Konzept und offene Punkte:
+[§7](#7-nächste-schritte--prototyp). Bedienung: [README](../README.md).
+
+> Die Abschnitte §1–§6 sind das ursprüngliche Konzept und bleiben als
+> Entscheidungsgrundlage stehen — auch dort, wo die Umsetzung bewusst abwich
+> (§7 nennt die Abweichungen und ihre Gründe).
 
 ---
 
@@ -236,30 +241,49 @@ mit Redaction-Pass (keine Secrets). Voraussetzung für Vertrauen, kein Nice-to-h
 
 ## 7. Nächste Schritte — Prototyp
 
-**Gewählter Einstieg: Token-/Cost-Meter auf Proxy-Basis (Feature 1 + 5).**
+**Gewählter Einstieg war: Token-/Cost-Meter auf Proxy-Basis (Feature 1 + 5).**
 
 Begründung: adressiert das schmerzhafteste Problem (①) mit dem höchsten sofort
 spürbaren Nutzen, zwingt uns die tragende Säule zuerst zu bauen (Proxy + Event-Log,
 Fundament für Gate/Replay/Memory), und testet die riskanteste Annahme des Projekts
-(Base-URL-Umbiegen + SSE sauber durchleiten) in Woche 1.
+(Base-URL-Umbiegen + SSE sauber durchleiten) zuerst.
 
-**Prototyp-Scope (eng geschnitten):**
+### Stand der Umsetzung
 
-> `vantage run claude` startet Claude Code hinter dem lokalen Proxy, leitet sauber
-> durch (inkl. Streaming, interaktiv unverändert nutzbar), liest `usage` aus den
-> Responses und zeigt eine Live-Zeile: **kumulierte Input/Output-Tokens, geschätzte
-> Kosten, Tokens/Minute.** Nebenbei fällt der erste `events.jsonl` ab.
+Alle fünf Probleme haben inzwischen Funktionalität, an echtem
+`api.anthropic.com`-Traffic verifiziert (nicht nur gegen Mocks):
 
-Ein Ziel-Agent (Claude Code), eine Schicht (Proxy), ein sichtbares Ergebnis. Danach ist
-der zweite Agent "nur" ein Adapter; Gate/Replay ernten wir auf dem vorhandenen Log.
+| Problem | Umgesetzt | Stand |
+|---|---|---|
+| ① Kosten/Limit | Meter (Stream + JSON, dekomprimiert), Limit-Prognose aus Rate-Limit-Headern, Schwellwert-Warnung | ✅ |
+| ② Granulare Freigaben | Aktionstyp-Klassifizierung (read/write/shell/network) + Policy-Warnung | ✅ Sichtbarkeit · ⬜ Enforcement |
+| ③ Nachvollziehbarkeit | Event-Log, `replay`-Timeline mit Prompt/Antwort/Tools, `watch`-Live-Ansicht, Redaction | ✅ |
+| ④ Riskante Änderungen | `--isolate` (Git-Worktree/Branch), aggregierter Diff, `review`/`discard` | ✅ |
+| ⑤ Projektgedächtnis | `.vantage/memory/` kompiliert + injiziert (`--append-system-prompt`) | ✅ |
 
-**Bausteine des Prototyps:**
-1. Reverse-Proxy (Fastify + undici) mit transparentem Streaming-Pass-through zu
-   `api.anthropic.com`.
-2. `vantage run claude`: setzt `ANTHROPIC_BASE_URL` auf den lokalen Proxy, spawnt Claude
-   Code (PTY), reicht I/O transparent durch.
-3. SSE-Parser, der `usage` aus dem finalen `message_delta` extrahiert (+ Cache-Tokens).
-4. Preis-Tabelle (Config) → Kosten-Schätzung; Anzeige klar als "Tokens exakt, € bei
-   Abo geschätzt".
-5. Event-Log-Writer (`events.jsonl`) als gemeinsamer Datenspeicher.
-6. Live-Statuszeile (Ink) über dem/neben dem Agent-Output.
+### Abweichungen vom ursprünglichen Konzept — und warum
+
+Drei Entscheidungen fielen bewusst anders als oben skizziert:
+
+1. **Kein Fastify/undici, keine Laufzeit-Abhängigkeiten.** Node-Bordmittel
+   (`http`, `zlib`, `fetch`) reichen vollständig. Das hält ein Tool, das *andere*
+   Tools wrappt, leicht und supply-chain-arm.
+2. **Kein PTY.** `stdio: "inherit"` genügt und ist deutlich risikoärmer — der Agent
+   besitzt sein Terminal unverändert.
+3. **Keine Ink-Statuszeile über dem Agent-Output.** Ein Overlay hieße: Vantage
+   übernimmt das Terminal und rendert neu — genau die Bruchstelle aus §6b. Die
+   Live-Ansicht läuft stattdessen als `vantage watch` in einem zweiten Terminal,
+   gespeist aus dem append-only Event-Log. Gleicher Nutzen, null Risiko für die
+   Agent-UI, null Abhängigkeiten.
+
+Zusätzlich über das ursprüngliche Konzept hinaus: eine **Provider-Schicht**
+(Anthropic + OpenAI) hinter einem Interface — der Proxy war sonst faktisch
+Anthropic-only, was der Multi-Agent-These widersprochen hätte.
+
+### Offen
+
+- **② Enforcement** (echtes Blocken statt Warnen) — Richtungsentscheidung zwischen
+  Proxy-Deny, nativen Agent-Hooks und OS-Sandbox (§6b/c).
+- **Memory-Harvest**: automatisches Destillieren neuer Entscheide am Session-Ende.
+- **Veröffentlichung**: der npm-Name `vantage` ist belegt; nötig ist ein scoped
+  Name (`@user/vantage`) oder eine Alternative.
