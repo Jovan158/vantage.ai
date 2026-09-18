@@ -25,6 +25,7 @@ import { startMockAnthropic } from "./dev/mock-anthropic.ts";
 import { QuotaWatcher } from "./ratelimit.ts";
 import type { QuotaWarning } from "./ratelimit.ts";
 import { renderTimeline, listSessions } from "./replay.ts";
+import { compileMemory, initMemory, addNote, memoryDir } from "./memory.ts";
 import {
   isGitRepo,
   isDirty,
@@ -89,27 +90,32 @@ function printHelp(): void {
   process.stdout.write(
     `vantage — control & transparency layer for AI-coding CLIs\n\n` +
       `Usage:\n` +
-      `  vantage run [--isolate] <agent> [-- <agent args...>]\n` +
+      `  vantage run [--isolate] [--no-memory] <agent> [-- <agent args...>]\n` +
       `  vantage sessions\n` +
       `  vantage replay <sessionId>\n` +
       `  vantage review <sessionId>\n` +
       `  vantage discard <sessionId>\n` +
+      `  vantage memory <init|show|add <category> <text>>\n` +
       `  vantage demo\n` +
       `  vantage --help\n\n` +
       `Agents: ${knownAgents().join(", ")}\n\n` +
       `--isolate runs the agent in a dedicated git worktree/branch so your\n` +
-      `working tree is untouched; review or discard the changes afterwards.\n`
+      `working tree is untouched; review or discard the changes afterwards.\n` +
+      `Project memory under .vantage/memory/ is injected into the agent unless\n` +
+      `--no-memory is given.\n`
   );
 }
 
 async function cmdRun(argv: string[]): Promise<number> {
   // Leading vantage-level flags come before the agent name.
   let isolate = false;
+  let useMemory = true;
   const rest = [...argv];
   while (rest[0]?.startsWith("--")) {
     const flag = rest.shift();
     if (flag === "--isolate") isolate = true;
     else if (flag === "--no-isolate") isolate = false;
+    else if (flag === "--no-memory") useMemory = false;
     else {
       log(`unknown flag "${flag}"`);
       return 1;
@@ -190,10 +196,21 @@ async function cmdRun(argv: string[]): Promise<number> {
     },
   });
 
-  log(`session ${sessionId} · agent ${adapter.id} · upstream ${upstream} (${proxy.via})`);
-  log(`proxy ${proxy.url} → ${adapter.command} ${agentArgs.join(" ")}`.trimEnd());
+  // Inject compiled project memory via the agent's native mechanism (⑤).
+  let finalArgs = agentArgs;
+  if (useMemory && adapter.contextArgs) {
+    const memory = compileMemory(cwd);
+    const extra = memory ? adapter.contextArgs(memory) : null;
+    if (memory && extra) {
+      finalArgs = [...extra, ...agentArgs];
+      log(`injected project memory (${memory.length} chars) via ${adapter.id}`);
+    }
+  }
 
-  const child = spawn(adapter.command, agentArgs, {
+  log(`session ${sessionId} · agent ${adapter.id} · upstream ${upstream} (${proxy.via})`);
+  log(`proxy ${proxy.url} → ${adapter.command}`);
+
+  const child = spawn(adapter.command, finalArgs, {
     cwd: childCwd,
     stdio: "inherit",
     env: { ...process.env, ...adapter.proxyEnv(proxy.url) },
@@ -352,6 +369,44 @@ async function cmdSessions(): Promise<number> {
   return 0;
 }
 
+async function cmdMemory(argv: string[]): Promise<number> {
+  const cwd = process.cwd();
+  const sub = argv[0];
+  switch (sub) {
+    case "init": {
+      const { created, existing } = initMemory(cwd);
+      log(`memory at ${path.relative(cwd, memoryDir(cwd))}/`);
+      if (created.length) log(`created: ${created.join(", ")}`);
+      if (existing.length) log(`kept: ${existing.join(", ")}`);
+      return 0;
+    }
+    case "add": {
+      const category = argv[1];
+      const text = argv.slice(2).join(" ");
+      if (!category || !text) {
+        log('usage: vantage memory add <category> <text>   (e.g. decisions "chose Postgres")');
+        return 1;
+      }
+      const p = addNote(cwd, category, text);
+      log(`noted in ${path.relative(cwd, p)}`);
+      return 0;
+    }
+    case "show":
+    case undefined: {
+      const memory = compileMemory(cwd);
+      if (!memory) {
+        log("no project memory yet — run `vantage memory init`");
+        return 0;
+      }
+      process.stdout.write(memory + "\n");
+      return 0;
+    }
+    default:
+      log(`unknown memory command "${sub}" (init | add | show)`);
+      return 1;
+  }
+}
+
 async function cmdDemo(): Promise<number> {
   log("demo: proving the full chain against a mock upstream (no API key needed)");
   const mock = await startMockAnthropic();
@@ -404,6 +459,9 @@ async function main(): Promise<void> {
       break;
     case "replay":
       process.exit(await cmdReplay(rest));
+      break;
+    case "memory":
+      process.exit(await cmdMemory(rest));
       break;
     case "demo":
       process.exit(await cmdDemo());

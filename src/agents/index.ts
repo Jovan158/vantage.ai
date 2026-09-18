@@ -10,15 +10,24 @@ export interface AgentAdapter {
   defaultUpstream: string;
   /** Env vars that point the agent's SDK at our local proxy. */
   proxyEnv(proxyUrl: string): Record<string, string>;
+  /**
+   * Extra CLI args that inject compiled project memory into this agent's
+   * context, or null if the agent has no non-invasive injection point.
+   */
+  contextArgs?(memory: string): string[] | null;
 }
 
-// Claude Code respects ANTHROPIC_BASE_URL to redirect its API traffic.
+// Claude Code respects ANTHROPIC_BASE_URL to redirect its API traffic and
+// --append-system-prompt to inject extra context without touching any file.
 const claudeCode: AgentAdapter = {
   id: "claude-code",
   command: "claude",
   defaultUpstream: "https://api.anthropic.com",
   proxyEnv(proxyUrl: string): Record<string, string> {
     return { ANTHROPIC_BASE_URL: proxyUrl };
+  },
+  contextArgs(memory: string): string[] {
+    return ["--append-system-prompt", memory];
   },
 };
 

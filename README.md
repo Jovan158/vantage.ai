@@ -72,7 +72,23 @@ node bin/vantage.mjs sessions                           # vergangene Sessions au
 node bin/vantage.mjs replay <sessionId>                 # Session als Timeline abspielen
 node bin/vantage.mjs review <sessionId>                 # Diff einer Session ansehen
 node bin/vantage.mjs discard <sessionId>                # Worktree + Branch verwerfen
+node bin/vantage.mjs memory init                        # Projektgedächtnis anlegen
+node bin/vantage.mjs memory add decisions "..."         # Entscheid festhalten
 ```
+
+**Projektgedächtnis (Problem ⑤).** Dateibasiert unter `.vantage/memory/*.md`
+(in Git versioniert), das Vantage vor jedem Run in den Agent-Kontext kompiliert
+und **nicht-invasiv** injiziert (Claude Code: `--append-system-prompt`, kein
+Datei-Mutieren). So startet keine Session mehr bei null. End-to-end verifiziert:
+
+```
+$ vantage memory add conventions "Preferred one-word greeting is 'Ahoy'."
+$ vantage run claude -- -p "Greet me in one word"           → Ahoy
+$ vantage run --no-memory claude -- -p "Greet me in one word" → Hello!
+```
+
+Der kanonische Store ist agent-agnostisch — derselbe Kontext lässt sich pro Agent
+ins jeweils native Format kompilieren (Cross-Agent-Gedächtnis).
 
 **Session-Replay (Problem ③).** `vantage replay <id>` rendert den Event-Log als
 lesbare Timeline — jeder Turn mit Modell/Tokens/Kosten **und Inhalt** (letzter
@@ -111,6 +127,7 @@ Build-Schritt; ein `dist/`-Build (`npm run build`) ist der Distributionspfad.
 | `src/git.ts` | Git-Session-Isolation (Worktree/Branch, aggregierter Diff) |
 | `src/replay.ts` | Session-Replay: Event-Log → Timeline + Session-Liste |
 | `src/turn.ts` | Turn-Inhalt (Prompt/Antwort/Tools) + Redaction |
+| `src/memory.ts` | Projektgedächtnis (`.vantage/memory/`, Kompilierung/Injektion) |
 | `src/agents/` | Agent-Adapter (Claude Code, Codex, Aider) |
 | `src/cli.ts` | `run [--isolate]` / `sessions` / `replay` / `review` / `discard` / `demo` |
 | `spike/` | Ursprünglicher Wegwerf-Durchstich, der die Kernannahme bewies |
