@@ -62,7 +62,7 @@ einen **aggregierten Diff**; danach entscheidest du mergen oder verwerfen:
 ### Installation
 
 ```bash
-npm install -g vantage     # oder: npx vantage --help
+npm install -g vantagedev   # oder: npx vantagedev --help
 vantage --help
 ```
 
