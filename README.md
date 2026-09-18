@@ -12,10 +12,21 @@ Vantage legt sich als Wrapper über bestehende AI-Coding-Agents (Claude Code,
 Codex CLI, Aider, …) und behebt deren bekannteste Schwachstellen — ohne die
 Agents nachzubauen. Vollständiges Konzept: [`docs/CONCEPT.md`](docs/CONCEPT.md).
 
-**MVP-Prototyp (in Entwicklung):** Live-Token-/Cost-Meter auf Proxy-Basis.
+**MVP-Prototyp:** Live-Token-/Cost-Meter auf Proxy-Basis.
 Ein lokaler, transparenter Streaming-Proxy leitet den API-Traffic byte-genau
 durch und liest dabei die echten Token-Zahlen aus — Fundament für Kosten-
 Transparenz, Session-Replay und ein granulares Approval-Gate.
+
+**Status: an echtem Traffic verifiziert.** `vantage run claude` wrappt die echte
+Claude-Code-CLI, leitet an `api.anthropic.com` durch (der Proxy respektiert
+`HTTPS_PROXY`/`NO_PROXY`) und extrahiert reale Usage — inkl. gzip/br-Dekompression
+der beobachteten Kopie und Metering von Streaming- *und* JSON-Antworten:
+
+```
+[vantage] session end · 2 request(s) · in 66 · out 45 · cache 66414 · ~$0.0208 (est.)
+```
+
+Diagnose mit `VANTAGE_DEBUG=1` (loggt Upstream-Status, Content-Type, Encoding).
 
 ### Ausprobieren (Node ≥ 22.6, keine Installation nötig)
 

@@ -28,6 +28,26 @@ export interface UsageExtractor {
   snapshot(): TokenUsage;
 }
 
+// Extract usage from a complete non-streaming Messages response body
+// (application/json). Returns null if the body has no usage block (e.g. errors).
+export function extractUsageFromJson(text: string): TokenUsage | null {
+  let json: { model?: string; usage?: AnthropicUsageFields };
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const u = json.usage;
+  if (!u) return null;
+  return {
+    model: json.model ?? null,
+    input_tokens: u.input_tokens ?? 0,
+    output_tokens: u.output_tokens ?? 0,
+    cache_creation_input_tokens: u.cache_creation_input_tokens ?? 0,
+    cache_read_input_tokens: u.cache_read_input_tokens ?? 0,
+  };
+}
+
 export function createUsageExtractor(): UsageExtractor {
   let buffer = "";
   const decoder = new TextDecoder();

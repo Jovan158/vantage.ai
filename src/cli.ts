@@ -71,7 +71,7 @@ async function cmdRun(argv: string[]): Promise<number> {
     },
   });
 
-  log(`session ${sessionId} · agent ${adapter.id} · upstream ${upstream}`);
+  log(`session ${sessionId} · agent ${adapter.id} · upstream ${upstream} (${proxy.via})`);
   log(`proxy ${proxy.url} → ${adapter.command} ${agentArgs.join(" ")}`.trimEnd());
 
   const child = spawn(adapter.command, agentArgs, {
