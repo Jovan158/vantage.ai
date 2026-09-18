@@ -170,7 +170,12 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
           });
         };
 
+        // A stream can end exactly once; guard so an error after data, or an
+        // error following 'end', never emits a second usage event.
+        let settled = false;
         const finish = (): void => {
+          if (settled) return;
+          settled = true;
           if (sse) {
             emit(sse.end());
           } else if (jsonChunks) {
@@ -178,26 +183,51 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
             if (turn) emit(turn);
           }
         };
+        const drain = (): void => {
+          if (!observe) return;
+          if (decompressor) decompressor.end(() => finish());
+          else finish();
+        };
 
         upstreamRes.on("data", (chunk: Buffer) => {
-          clientRes.write(chunk); // exact bytes to the client
+          // The agent may have gone away mid-stream; writing then throws.
+          if (!clientRes.writableEnded && !clientRes.destroyed) clientRes.write(chunk);
           if (!observe) return;
           if (decompressor) decompressor.write(chunk); // observe a decoded copy
           else observeBytes(chunk);
         });
 
         upstreamRes.on("end", () => {
-          clientRes.end();
-          if (!observe) return;
-          if (decompressor) decompressor.end(() => finish());
-          else finish();
+          if (!clientRes.writableEnded) clientRes.end();
+          drain();
+        });
+
+        // Mid-stream upstream failure: end the client cleanly and still report
+        // whatever usage we managed to observe. Never let this throw.
+        upstreamRes.on("error", (err: Error) => {
+          if (DEBUG) log(`upstream stream error: ${err.message}`);
+          if (!clientRes.writableEnded && !clientRes.destroyed) clientRes.end();
+          drain();
         });
       }
     );
 
     upstreamReq.on("error", (err: Error) => {
+      if (DEBUG) log(`upstream request error: ${err.message}`);
+      if (clientRes.destroyed || clientRes.writableEnded) return;
       if (!clientRes.headersSent) clientRes.writeHead(502);
       clientRes.end("vantage proxy upstream error: " + err.message);
+    });
+
+    // If the agent aborts (Ctrl-C, crash, timeout) stop talking upstream
+    // instead of leaking the socket — and never crash on the resulting error.
+    const abortUpstream = (): void => {
+      if (!upstreamReq.destroyed) upstreamReq.destroy();
+    };
+    clientReq.on("error", abortUpstream);
+    clientRes.on("error", abortUpstream);
+    clientRes.on("close", () => {
+      if (!clientRes.writableEnded) abortUpstream();
     });
 
     clientReq.pipe(upstreamReq);
