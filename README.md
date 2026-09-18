@@ -33,8 +33,17 @@ was Claude Code real zurückgibt — 5h-/7d-Auslastung + Reset) und die **klassi
 Per-Key-Buckets** (API-Key-Billing — requests/tokens remaining). Genau der
 Abo-Quota-Fall, den reine Token-Zählung nicht abbilden kann.
 
-Diagnose mit `VANTAGE_DEBUG=1` (loggt Upstream-Status, Content-Type, Encoding und
-alle Rate-Limit-Header).
+Bei Annäherung ans Limit warnt Vantage auffällig — **einmalig** beim Überschreiten
+der Schwelle (kein Spam), re-armiert nach Reset, und meldet akute Fälle
+(`rejected`, `retry-after`) sofort:
+
+```
+[vantage] ⚠  Quota 5h zu 92% verbraucht — nähert sich dem Limit (reset 18m)
+```
+
+Schwelle konfigurierbar über `VANTAGE_QUOTA_WARN` (Prozent `80` oder Anteil `0.8`,
+Default 90 %). Diagnose mit `VANTAGE_DEBUG=1` (loggt Upstream-Status, Content-Type,
+Encoding und alle Rate-Limit-Header).
 
 ### Ausprobieren (Node ≥ 22.6, keine Installation nötig)
 

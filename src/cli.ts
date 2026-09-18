@@ -20,11 +20,29 @@ import {
 } from "./events.ts";
 import { resolveAdapter, knownAgents } from "./agents/index.ts";
 import { startMockAnthropic } from "./dev/mock-anthropic.ts";
+import { QuotaWatcher } from "./ratelimit.ts";
+import type { QuotaWarning } from "./ratelimit.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 function log(msg: string): void {
   process.stderr.write(`\x1b[2m[vantage]\x1b[0m ${msg}\n`);
+}
+
+function warn(w: QuotaWarning): void {
+  const color = w.level === "critical" ? "\x1b[1;31m" : "\x1b[1;33m"; // red / yellow
+  const icon = w.level === "critical" ? "⛔" : "⚠";
+  process.stderr.write(`${color}[vantage] ${icon}  ${w.message}\x1b[0m\n`);
+}
+
+// Warn threshold as a fraction 0..1. VANTAGE_QUOTA_WARN accepts a fraction
+// (0.8) or a percent (80); default 90%.
+function warnThreshold(): number {
+  const raw = process.env.VANTAGE_QUOTA_WARN;
+  if (!raw) return 0.9;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0.9;
+  return n > 1 ? Math.min(n / 100, 1) : n;
 }
 
 function printHelp(): void {
@@ -59,6 +77,7 @@ async function cmdRun(argv: string[]): Promise<number> {
   const sessionId = newSessionId();
   const eventLog = new EventLog(sessionEventsPath(cwd, sessionId));
   const meter = new Meter();
+  const quota = new QuotaWatcher(warnThreshold());
 
   eventLog.append({ ts: new Date().toISOString(), type: "session_start", agent: adapter.id });
 
@@ -79,6 +98,7 @@ async function cmdRun(argv: string[]): Promise<number> {
         path: "/",
         raw: snapshot.raw,
       });
+      for (const w of quota.update(snapshot)) warn(w);
     },
   });
 

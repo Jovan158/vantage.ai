@@ -111,7 +111,7 @@ export function extractRateLimit(headers: Headers): RateLimitSnapshot | null {
   };
 }
 
-function relFromSeconds(secs: number): string {
+export function relFromSeconds(secs: number): string {
   const s = Math.max(0, Math.round(secs));
   if (s < 90) return `${s}s`;
   const m = Math.round(s / 60);
@@ -163,4 +163,102 @@ export function formatRateLimit(s: RateLimitSnapshot, now = Date.now()): string 
   }
   if (s.retryAfterSec != null) parts.push(`retry-after ${s.retryAfterSec}s`);
   return parts.length ? parts.join(" · ") : null;
+}
+
+// ---------------------------------------------------------------------------
+// Threshold warnings (problem ①: never hit a limit mid-work by surprise).
+//
+// QuotaWatcher fires a warning the first time a quota window crosses the
+// threshold, stays quiet on every following request while it remains over
+// (no spam), and re-arms once utilization drops back below (e.g. after reset).
+// A rejected window or a retry-after is acute and warned immediately.
+// ---------------------------------------------------------------------------
+
+export interface QuotaWarning {
+  key: string;
+  level: "warn" | "critical";
+  message: string;
+}
+
+export class QuotaWatcher {
+  private warned = new Set<string>();
+  private readonly threshold: number;
+
+  /** threshold is a fraction 0..1 of a window's utilization (default 0.9). */
+  constructor(threshold = 0.9) {
+    this.threshold = threshold;
+  }
+
+  update(s: RateLimitSnapshot, now = Date.now()): QuotaWarning[] {
+    const out: QuotaWarning[] = [];
+    const once = (key: string, make: () => QuotaWarning): void => {
+      if (!this.warned.has(key)) {
+        this.warned.add(key);
+        out.push(make());
+      }
+    };
+    const clear = (key: string): void => void this.warned.delete(key);
+    const resetHint = (unix: number | null): string =>
+      unix != null ? ` (reset ${relFromSeconds(unix - now / 1000)})` : "";
+
+    if (s.unified) {
+      for (const w of s.unified.windows) {
+        if (w.status && w.status !== "allowed") {
+          once(`rej:${w.key}`, () => ({
+            key: w.key,
+            level: "critical",
+            message: `Quota-Fenster ${w.key} ist ${w.status} — Anfragen werden blockiert${resetHint(w.resetUnix)}`,
+          }));
+        } else {
+          clear(`rej:${w.key}`);
+        }
+        if (w.utilization != null) {
+          if (w.utilization >= this.threshold) {
+            once(`util:${w.key}`, () => ({
+              key: w.key,
+              level: "warn",
+              message: `Quota ${w.key} zu ${Math.round(w.utilization! * 100)}% verbraucht — nähert sich dem Limit${resetHint(w.resetUnix)}`,
+            }));
+          } else {
+            clear(`util:${w.key}`);
+          }
+        }
+      }
+    }
+
+    // Classic per-key buckets: warn when a bucket is nearly drained.
+    const classic: Array<[string, RateLimitField | undefined]> = [
+      ["tokens", s.tokens],
+      ["input-tokens", s.inputTokens],
+      ["output-tokens", s.outputTokens],
+      ["requests", s.requests],
+    ];
+    for (const [name, f] of classic) {
+      if (!f || f.limit == null || f.remaining == null || f.limit === 0) {
+        continue;
+      }
+      const used = 1 - f.remaining / f.limit;
+      if (used >= this.threshold) {
+        once(`classic:${name}`, () => ({
+          key: name,
+          level: "warn",
+          message: `${name} zu ${Math.round(used * 100)}% verbraucht — noch ${f.remaining}/${f.limit}`,
+        }));
+      } else {
+        clear(`classic:${name}`);
+      }
+    }
+
+    if (s.retryAfterSec != null) {
+      once("retry", () => ({
+        key: "retry-after",
+        level: "critical",
+        message: `Rate-Limit erreicht — retry-after ${s.retryAfterSec}s`,
+      }));
+    } else {
+      clear("retry");
+    }
+
+    return out;
+  }
 }
