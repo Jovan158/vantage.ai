@@ -180,6 +180,7 @@ async function cmdRun(argv: string[]): Promise<number> {
 
   const proxy = await startProxy({
     upstream,
+    provider: adapter.provider,
     onUsage: (e: UsageEvent) => {
       eventLog.append(e);
       meter.add(e);
@@ -242,7 +243,7 @@ async function cmdRun(argv: string[]): Promise<number> {
       const t = meter.snapshot();
       log(
         `session end · ${t.requests} request(s) · in ${t.input} · out ${t.output} · ` +
-          `cache ${t.cacheRead} · ~$${t.costUsd.toFixed(4)} (est.)`
+          `cache ${t.cacheRead}r/${t.cacheWrite}w · ~$${t.costUsd.toFixed(4)} (est.)`
       );
       const rl = meter.rateLimitLine();
       if (rl) log(rl);

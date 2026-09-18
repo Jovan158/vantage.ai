@@ -10,8 +10,10 @@ import zlib from "node:zlib";
 import { URL } from "node:url";
 import type { AddressInfo } from "node:net";
 import type { Transform } from "node:stream";
-import { createTurnExtractor, extractTurnFromJson, extractUserPrompt } from "./turn.ts";
+import { extractUserPrompt } from "./turn.ts";
 import type { TurnContent } from "./turn.ts";
+import { getProvider } from "./providers/index.ts";
+import type { Provider, ProviderName } from "./providers/index.ts";
 import { estimateCostUsd } from "./pricing.ts";
 import { upstreamTransport } from "./upstream.ts";
 import { extractRateLimit } from "./ratelimit.ts";
@@ -48,6 +50,8 @@ function makeDecompressor(encoding: string): Transform | null {
 export interface ProxyOptions {
   upstream: string;
   port?: number;
+  /** Response format to parse; defaults to Anthropic. */
+  provider?: ProviderName;
   onUsage?: (event: UsageEvent) => void;
   onRateLimit?: (snapshot: RateLimitSnapshot) => void;
 }
@@ -65,6 +69,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
   const upstreamUrl = new URL(opts.upstream);
   const transport = upstreamTransport(opts.upstream);
   const upstreamClient = transport.client;
+  const provider: Provider = getProvider(opts.provider ?? "anthropic");
 
   const server = http.createServer((clientReq, clientRes) => {
     const targetPath = clientReq.url ?? "/";
@@ -76,7 +81,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     let reqBytes = 0;
     const captureReq =
       clientReq.method === "POST" &&
-      targetPath.includes("/v1/messages") &&
+      provider.isObservablePath(targetPath) &&
       String(clientReq.headers["content-type"] ?? "").includes("json") &&
       !clientReq.headers["content-encoding"];
     if (captureReq) {
@@ -108,7 +113,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
         const contentType = String(upstreamRes.headers["content-type"] ?? "");
         const encoding = String(upstreamRes.headers["content-encoding"] ?? "").toLowerCase();
         const isStream = contentType.includes("text/event-stream");
-        const isMessages = targetPath.includes("/v1/messages");
+        const isMessages = provider.isObservablePath(targetPath);
         const isJsonMessages = isMessages && contentType.includes("application/json");
         const observe = isStream || isJsonMessages;
 
@@ -129,7 +134,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
         // upstream bytes. If the response is compressed we forward raw bytes to
         // the client and feed a decompressed copy to the observer. Streaming
         // responses parse SSE incrementally; JSON responses buffer the body.
-        const sse = isStream ? createTurnExtractor() : null;
+        const sse = isStream ? provider.createTurnExtractor() : null;
         const jsonChunks: Buffer[] | null = isJsonMessages ? [] : null;
         const decompressor = observe ? makeDecompressor(encoding) : null;
 
@@ -169,7 +174,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
           if (sse) {
             emit(sse.end());
           } else if (jsonChunks) {
-            const turn = extractTurnFromJson(Buffer.concat(jsonChunks).toString("utf8"));
+            const turn = provider.extractTurnFromJson(Buffer.concat(jsonChunks).toString("utf8"));
             if (turn) emit(turn);
           }
         };

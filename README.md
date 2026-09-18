@@ -132,6 +132,21 @@ sie in den Event-Log geschrieben werden (Konzept §6d).
 → Proxy → Live-Meter → Event-Log. Läuft dank Nodes Type-Stripping ohne
 Build-Schritt; ein `dist/`-Build (`npm run build`) ist der Distributionspfad.
 
+**Wirklich Multi-Agent, nicht nur Anthropic.** Die Kernthese des Projekts ist ein
+Layer über *mehreren* Agents — deshalb sitzt hinter dem Proxy eine Provider-Schicht:
+ein Provider sagt nur, welche Pfade einen Turn tragen und wie sein Streaming-/
+JSON-Format zu parsen ist. Alles darüber (Meter, Event-Log, Replay, Policy, Quota)
+arbeitet auf einer normalisierten Form und bleibt unverändert:
+
+| Provider | Agents | Format |
+|---|---|---|
+| `anthropic` | Claude Code | `/v1/messages`, SSE `message_start`/`message_delta` |
+| `openai` | Codex CLI, Aider, OpenAI-kompatible | `/v1/chat/completions`, `choices[].delta`, `usage` |
+
+Ein neuer Anbieter ist damit **additiv** — kein Eingriff in den Kern. Die komplette
+OpenAI-Kette (Byte-Transparenz, Usage, Prompt/Antwort, Kosten) ist durch den echten
+Proxy getestet, die Anthropic-Kette zusätzlich gegen echten `api.anthropic.com`-Traffic.
+
 ### Struktur
 
 | Pfad | Rolle |
@@ -147,6 +162,7 @@ Build-Schritt; ein `dist/`-Build (`npm run build`) ist der Distributionspfad.
 | `src/turn.ts` | Turn-Inhalt (Prompt/Antwort/Tools) + Redaction |
 | `src/memory.ts` | Projektgedächtnis (`.vantage/memory/`, Kompilierung/Injektion) |
 | `src/policy.ts` | Aktionstyp-Klassifizierung + Policy (Beobachtungs-Schicht ②) |
+| `src/providers/` | Provider-Parser (Anthropic + OpenAI) hinter einem Interface |
 | `src/agents/` | Agent-Adapter (Claude Code, Codex, Aider) |
 | `src/cli.ts` | `run [--isolate]` / `sessions` / `replay` / `review` / `discard` / `demo` |
 | `spike/` | Ursprünglicher Wegwerf-Durchstich, der die Kernannahme bewies |

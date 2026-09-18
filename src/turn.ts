@@ -21,8 +21,8 @@ export interface TurnContent {
   usage: TokenUsage;
 }
 
-const MAX_TEXT = 400;
-const MAX_INPUT = 120;
+export const MAX_TEXT = 400;
+export const MAX_INPUT = 120;
 
 // Redact obvious secrets/PII before any preview is persisted (CONCEPT.md §6d).
 // Conservative and targeted — a real deployment would make this configurable.
@@ -33,13 +33,13 @@ const REDACTIONS: Array<[RegExp, string]> = [
   [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, "[jwt]"],
 ];
 
-function redact(s: string): string {
+export function redact(s: string): string {
   let out = s;
   for (const [re, rep] of REDACTIONS) out = out.replace(re, rep);
   return out;
 }
 
-function truncate(s: string, max: number): string {
+export function truncate(s: string, max: number): string {
   const oneLine = redact(s).replace(/\s+/g, " ").trim();
   return oneLine.length > max ? oneLine.slice(0, max - 1) + "…" : oneLine;
 }

@@ -65,6 +65,30 @@ test("renderTimeline shows turns, quota, and end summary (no color)", () => {
   assert.doesNotMatch(out, /\x1b\[/);
 });
 
+// Regression: a real run showed "cache 0 · $0.2257" because only cache READS
+// were displayed while 60k cache WRITES (≈1.25x input) drove the cost. Writes
+// must be visible or the number looks inexplicable.
+test("renderTimeline surfaces cache writes, which drive cost", () => {
+  const withWrite: VantageEvent[] = [
+    { ts: "2026-09-18T09:00:00.000Z", type: "session_start", agent: "claude-code" },
+    {
+      ts: "2026-09-18T09:00:02.000Z",
+      type: "usage",
+      path: "/v1/messages",
+      model: "claude-sonnet-5",
+      in: 2,
+      out: 4,
+      cache_read: 0,
+      cache_write: 60179,
+      cost_usd: 0.2257,
+    },
+    { ts: "2026-09-18T09:00:03.000Z", type: "session_end", exitCode: 0 },
+  ];
+  const out = renderTimeline(withWrite, false);
+  assert.match(out, /cache 0r\/60kw/, "turn line shows the cache write");
+  assert.match(out, /session end .*cache 0r\/60kw/, "summary shows the cache write");
+});
+
 test("renderTimeline dedups repeated quota lines", () => {
   const dup: VantageEvent[] = [
     events[0]!,

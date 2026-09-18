@@ -17,6 +17,12 @@ const PRICES: Record<string, ModelPricing> = {
   "claude-opus": { input: 15, output: 75, cache_write: 18.75, cache_read: 1.5 },
   "claude-sonnet": { input: 3, output: 15, cache_write: 3.75, cache_read: 0.3 },
   "claude-haiku": { input: 0.8, output: 4, cache_write: 1.0, cache_read: 0.08 },
+  // OpenAI-compatible agents (Codex CLI, Aider). Same caveat: config, not gospel.
+  "gpt-4o-mini": { input: 0.15, output: 0.6, cache_write: 0, cache_read: 0.075 },
+  "gpt-4o": { input: 2.5, output: 10, cache_write: 0, cache_read: 1.25 },
+  "gpt-4.1": { input: 2, output: 8, cache_write: 0, cache_read: 0.5 },
+  "o4-mini": { input: 1.1, output: 4.4, cache_write: 0, cache_read: 0.275 },
+  "o3": { input: 2, output: 8, cache_write: 0, cache_read: 0.5 },
 };
 
 const DEFAULT_PRICING = PRICES["claude-sonnet"]!;

@@ -46,6 +46,7 @@ export interface SessionSummary {
   input: number;
   output: number;
   cacheRead: number;
+  cacheWrite: number;
   costUsd: number;
   exitCode: number | null | undefined;
 }
@@ -60,6 +61,7 @@ export function summarize(sessionId: string, events: VantageEvent[]): SessionSum
     input: 0,
     output: 0,
     cacheRead: 0,
+    cacheWrite: 0,
     costUsd: 0,
     exitCode: undefined,
   };
@@ -74,6 +76,7 @@ export function summarize(sessionId: string, events: VantageEvent[]): SessionSum
       s.input += e.in;
       s.output += e.out;
       s.cacheRead += e.cache_read;
+      s.cacheWrite += e.cache_write;
       s.costUsd += e.cost_usd;
     }
   }
@@ -103,7 +106,7 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
         lines.push(
           `${at} ${c.cyan}▸ turn ${step}${c.reset} ${c.dim}${model}${c.reset} · ` +
             `in ${fmtTokens(e.in)} · out ${c.green}${fmtTokens(e.out)}${c.reset} · ` +
-            `cache ${fmtTokens(e.cache_read)} · ${cost}`
+            `cache ${fmtTokens(e.cache_read)}${e.cache_write ? `r/${fmtTokens(e.cache_write)}w` : ""} · ${cost}`
         );
         if (e.prompt) lines.push(`         ${c.dim}prompt:${c.reset} ${e.prompt}`);
         if (e.text) lines.push(`         ${c.dim}reply:${c.reset}  ${e.text}`);
@@ -127,7 +130,8 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
         const s = summarize("", events);
         lines.push(
           `${at} ${c.bold}● session end${c.reset} ${c.dim}· ${s.requests} turn(s) · ` +
-            `in ${fmtTokens(s.input)} · out ${fmtTokens(s.output)} · cache ${fmtTokens(s.cacheRead)} · ` +
+            `in ${fmtTokens(s.input)} · out ${fmtTokens(s.output)} · ` +
+            `cache ${fmtTokens(s.cacheRead)}r/${fmtTokens(s.cacheWrite)}w · ` +
             `~$${s.costUsd.toFixed(4)} (est.)` +
             (e.exitCode != null ? ` · exit ${e.exitCode}` : "") +
             c.reset

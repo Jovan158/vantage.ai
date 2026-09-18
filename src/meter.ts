@@ -76,7 +76,11 @@ export class Meter {
     const parts = [
       `Σ in ${fmt(t.input)}`,
       `out ${fmt(t.output)}`,
-      `cache ${fmt(t.cacheRead)}`,
+      // Cache writes cost ~1.25x input, so hiding them makes the cost look
+      // inexplicable. Show them whenever they occur.
+      t.cacheWrite > 0
+        ? `cache ${fmt(t.cacheRead)}r/${fmt(t.cacheWrite)}w`
+        : `cache ${fmt(t.cacheRead)}`,
       `~$${t.costUsd.toFixed(4)} (est.)`,
     ];
     if (rate > 0) parts.push(`${fmt(rate)} out/min`);
