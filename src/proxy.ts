@@ -10,8 +10,8 @@ import zlib from "node:zlib";
 import { URL } from "node:url";
 import type { AddressInfo } from "node:net";
 import type { Transform } from "node:stream";
-import { createUsageExtractor, extractUsageFromJson } from "./usage.ts";
-import type { TokenUsage } from "./usage.ts";
+import { createTurnExtractor, extractTurnFromJson, extractUserPrompt } from "./turn.ts";
+import type { TurnContent } from "./turn.ts";
 import { estimateCostUsd } from "./pricing.ts";
 import { upstreamTransport } from "./upstream.ts";
 import { extractRateLimit } from "./ratelimit.ts";
@@ -70,6 +70,28 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     const targetPath = clientReq.url ?? "/";
     const headers = { ...clientReq.headers, host: upstreamUrl.host };
 
+    // Tee the request body (capped) to recover the last user prompt. Requests
+    // to the Messages API are uncompressed JSON in practice.
+    const reqChunks: Buffer[] = [];
+    let reqBytes = 0;
+    const captureReq =
+      clientReq.method === "POST" &&
+      targetPath.includes("/v1/messages") &&
+      String(clientReq.headers["content-type"] ?? "").includes("json") &&
+      !clientReq.headers["content-encoding"];
+    if (captureReq) {
+      clientReq.on("data", (chunk: Buffer) => {
+        if (reqBytes < 512 * 1024) {
+          reqChunks.push(chunk);
+          reqBytes += chunk.length;
+        }
+      });
+    }
+    const userPrompt = (): string | undefined => {
+      if (!captureReq || reqChunks.length === 0) return undefined;
+      return extractUserPrompt(Buffer.concat(reqChunks).toString("utf8")) ?? undefined;
+    };
+
     const upstreamReq = upstreamClient.request(
       {
         protocol: upstreamUrl.protocol,
@@ -107,7 +129,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
         // upstream bytes. If the response is compressed we forward raw bytes to
         // the client and feed a decompressed copy to the observer. Streaming
         // responses parse SSE incrementally; JSON responses buffer the body.
-        const sse = isStream ? createUsageExtractor() : null;
+        const sse = isStream ? createTurnExtractor() : null;
         const jsonChunks: Buffer[] | null = isJsonMessages ? [] : null;
         const decompressor = observe ? makeDecompressor(encoding) : null;
 
@@ -122,18 +144,24 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
           });
         }
 
-        const emit = (usage: TokenUsage): void => {
+        const emit = (turn: TurnContent): void => {
           if (!opts.onUsage) return;
+          const u = turn.usage;
+          const prompt = userPrompt();
           opts.onUsage({
             ts: new Date().toISOString(),
             type: "usage",
             path: targetPath,
-            model: usage.model,
-            in: usage.input_tokens,
-            out: usage.output_tokens,
-            cache_read: usage.cache_read_input_tokens,
-            cache_write: usage.cache_creation_input_tokens,
-            cost_usd: Number(estimateCostUsd(usage).toFixed(6)),
+            model: u.model,
+            in: u.input_tokens,
+            out: u.output_tokens,
+            cache_read: u.cache_read_input_tokens,
+            cache_write: u.cache_creation_input_tokens,
+            cost_usd: Number(estimateCostUsd(u).toFixed(6)),
+            ...(prompt ? { prompt } : {}),
+            ...(turn.text ? { text: turn.text } : {}),
+            ...(turn.tools.length ? { tools: turn.tools.map((t) => t.name) } : {}),
+            ...(turn.stopReason ? { stopReason: turn.stopReason } : {}),
           });
         };
 
@@ -141,8 +169,8 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
           if (sse) {
             emit(sse.end());
           } else if (jsonChunks) {
-            const usage = extractUsageFromJson(Buffer.concat(jsonChunks).toString("utf8"));
-            if (usage) emit(usage);
+            const turn = extractTurnFromJson(Buffer.concat(jsonChunks).toString("utf8"));
+            if (turn) emit(turn);
           }
         };
 

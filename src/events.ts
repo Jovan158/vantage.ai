@@ -14,6 +14,11 @@ export interface UsageEvent {
   cache_read: number;
   cache_write: number;
   cost_usd: number;
+  // Optional turn content (problem ③) — previews, not full transcripts.
+  prompt?: string;
+  text?: string;
+  tools?: string[];
+  stopReason?: string | null;
 }
 
 export interface SessionEvent {

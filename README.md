@@ -75,15 +75,24 @@ node bin/vantage.mjs discard <sessionId>                # Worktree + Branch verw
 ```
 
 **Session-Replay (Problem ③).** `vantage replay <id>` rendert den Event-Log als
-lesbare Timeline — Turns mit Modell/Tokens/Kosten, Quota-Verlauf und Zusammenfassung:
+lesbare Timeline — jeder Turn mit Modell/Tokens/Kosten **und Inhalt** (letzter
+Prompt, Antworttext, aufgerufene Tools), Quota-Verlauf und Zusammenfassung:
 
 ```
 ● session start · agent claude-code
- +2.5s ◔ quota 5h 70% used reset 1h38m · 7d 8% used
- +2.5s ▸ turn 1 claude-sonnet-5 · in 2 · out 4 · cache 60k · $0.0181
- +3.6s ▸ turn 2 claude-sonnet-5 · in 64 · out 38 · cache 6.2k · $0.0026
- +4.0s ● session end · 2 turn(s) · in 66 · out 42 · cache 66k · ~$0.0208 (est.) · exit 0
+ +2.1s ◔ quota 5h 76% used reset 1h35m · 7d 9% used
+ +3.4s ▸ turn 1 claude-sonnet-5 · in 2 · out 147 · cache 55k · $0.0385
+         prompt: Create a file poem.txt with a two-line poem about the sea
+         tools:  Write
+ +4.3s ▸ turn 2 claude-sonnet-5 · in 2 · out 21 · cache 61k · $0.0193
+         reply:  Created poem.txt with a two-line poem about the sea.
+ +6.0s ● session end · 3 turn(s) · in 98 · out 232 · cache 122k · ~$0.0609 (est.) · exit 0
 ```
+
+So sieht man, **was** der Agent über mehrere Schritte vorhatte. Prompt-/Antwort-
+Auszüge werden gekürzt gespeichert und durch einen **Redaction-Pass** von offen-
+sichtlichen Secrets/PII (E-Mails, API-Keys, Bearer-Token, JWTs) bereinigt, bevor
+sie in den Event-Log geschrieben werden (Konzept §6d).
 
 `vantage demo` fährt die ganze Orchestrierung vor: Env-Injektion → Agent-Spawn
 → Proxy → Live-Meter → Event-Log. Läuft dank Nodes Type-Stripping ohne
@@ -101,6 +110,7 @@ Build-Schritt; ein `dist/`-Build (`npm run build`) ist der Distributionspfad.
 | `src/events.ts` | Append-only Event-Log (JSONL) |
 | `src/git.ts` | Git-Session-Isolation (Worktree/Branch, aggregierter Diff) |
 | `src/replay.ts` | Session-Replay: Event-Log → Timeline + Session-Liste |
+| `src/turn.ts` | Turn-Inhalt (Prompt/Antwort/Tools) + Redaction |
 | `src/agents/` | Agent-Adapter (Claude Code, Codex, Aider) |
 | `src/cli.ts` | `run [--isolate]` / `sessions` / `replay` / `review` / `discard` / `demo` |
 | `spike/` | Ursprünglicher Wegwerf-Durchstich, der die Kernannahme bewies |

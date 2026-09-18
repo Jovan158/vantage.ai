@@ -24,6 +24,12 @@ function relTime(fromMs: number, toMs: number): string {
   return `+${Math.round(s / 60)}m`;
 }
 
+function tally(names: string[]): string {
+  const counts = new Map<string, number>();
+  for (const n of names) counts.set(n, (counts.get(n) ?? 0) + 1);
+  return [...counts.entries()].map(([n, k]) => (k > 1 ? `${n}×${k}` : n)).join(", ");
+}
+
 function fmtTokens(n: number): string {
   if (n < 1000) return String(n);
   if (n < 1_000_000) return (n / 1000).toFixed(n < 10_000 ? 1 : 0) + "k";
@@ -97,6 +103,12 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
             `in ${fmtTokens(e.in)} · out ${c.green}${fmtTokens(e.out)}${c.reset} · ` +
             `cache ${fmtTokens(e.cache_read)} · ${cost}`
         );
+        if (e.prompt) lines.push(`         ${c.dim}prompt:${c.reset} ${e.prompt}`);
+        if (e.text) lines.push(`         ${c.dim}reply:${c.reset}  ${e.text}`);
+        if (e.tools && e.tools.length) {
+          const counts = tally(e.tools);
+          lines.push(`         ${c.dim}tools:${c.reset}  ${counts}`);
+        }
         break;
       }
       case "ratelimit": {
