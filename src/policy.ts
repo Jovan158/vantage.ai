@@ -1,16 +1,24 @@
-// Action-type policy — the SAFE, observe-only half of problem ② (granular
-// control by action type). We classify each tool call the agent makes into
-// read / write / shell / network / other, and — per a configurable policy —
-// surface a heads-up when a "warn" action type is used. Nothing is blocked:
-// enforcement (deny) needs a request-mutating gate or native agent hooks and is
-// intentionally out of scope here (CONCEPT.md §6b/c). This layer gives the
-// granular *visibility* now, and is the foundation enforcement can sit on.
+// Action-type policy for problem ② — granular control by action type.
+// Every tool call is classified into read / write / shell / network / other and
+// judged against a configurable policy:
+//
+//   allow  no interference        warn  observe-only notice
+//   ask    human must approve     deny  blocked outright
+//
+// "warn" is surfaced from the proxy's observation of the response stream.
+// "ask"/"deny" are ENFORCED in src/hook.ts through the agent's PreToolUse hook —
+// the proxy cannot do it, because a tool executes inside the agent and never
+// travels through the proxy (CONCEPT.md §6b/c).
 
 import fs from "node:fs";
 import path from "node:path";
 
 export type ActionType = "read" | "write" | "shell" | "network" | "other";
-export type PolicyLevel = "allow" | "warn";
+// allow  — no interference
+// warn   — observe-only notice (no enforcement)
+// ask    — the agent must get human approval before running it
+// deny   — blocked outright
+export type PolicyLevel = "allow" | "warn" | "ask" | "deny";
 
 export type Policy = Record<ActionType, PolicyLevel>;
 
@@ -55,8 +63,15 @@ export const DEFAULT_POLICY: Policy = {
 
 const TYPES: ActionType[] = ["read", "write", "shell", "network", "other"];
 
+const LEVELS: PolicyLevel[] = ["allow", "warn", "ask", "deny"];
+
 function coerceLevel(v: unknown): PolicyLevel | null {
-  return v === "allow" || v === "warn" ? v : null;
+  return typeof v === "string" && (LEVELS as string[]).includes(v) ? (v as PolicyLevel) : null;
+}
+
+/** True when any action type is set to an enforcing level. */
+export function needsEnforcement(policy: Policy): boolean {
+  return Object.values(policy).some((l) => l === "ask" || l === "deny");
 }
 
 // Load policy from .vantage/policy.json, then apply the VANTAGE_POLICY env
@@ -111,13 +126,17 @@ export class PolicyWatcher {
     const out: PolicyNotice[] = [];
     for (const tool of toolNames) {
       const type = classifyTool(tool);
-      if (this.policy[type] !== "warn" || this.seen.has(type)) continue;
+      const level = this.policy[type];
+      if (level === "allow" || this.seen.has(type)) continue;
       this.seen.add(type);
       out.push({
         type,
         tool,
-        level: "warn",
-        message: `${type} action used (${tool}) — policy 'warn' (observe-only, not blocked)`,
+        level,
+        message:
+          level === "warn"
+            ? `${type} action used (${tool}) — policy 'warn' (observe-only, not blocked)`
+            : `${type} action used (${tool}) — policy '${level}' (enforced via agent hook)`,
       });
     }
     return out;

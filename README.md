@@ -75,7 +75,7 @@ Type-Stripping zurück.
 ```bash
 # Aus dem Checkout entwickeln
 npm install          # nur TypeScript + @types/node (keine Laufzeit-Deps)
-npm test             # 44 Tests
+npm test             # 51 Tests
 npm run typecheck    # tsc --noEmit über src + test
 npm run build        # -> dist/
 npm pack             # baut via prepack und schnürt das Tarball
@@ -86,7 +86,7 @@ npm pack             # baut via prepack und schnürt das Tarball
 ### Ausprobieren (Node ≥ 22.6, keine Installation nötig)
 
 ```bash
-npm test          # 44 Tests: Proxy-Transparenz & Resilienz, Usage (Anthropic+OpenAI),
+npm test          # 51 Tests: Proxy-Transparenz & Resilienz, Usage (Anthropic+OpenAI),
                   # Rate-Limit, Quota, Git-Isolation, Replay, Watch, Memory, Policy
 npm run demo      # komplette Kette gegen einen Mock-Upstream (kein API-Key nötig)
 
@@ -117,7 +117,7 @@ $ vantage run --no-memory claude -- -p "Greet me in one word" → Hello!
 Der kanonische Store ist agent-agnostisch — derselbe Kontext lässt sich pro Agent
 ins jeweils native Format kompilieren (Cross-Agent-Gedächtnis).
 
-**Granulare Aktions-Transparenz (Problem ②, Beobachtungs-Schicht).** Vantage
+**Granulare Freigaben (Problem ②).** Vantage
 klassifiziert jeden Tool-Call nach Typ — **read / write / shell / network / other**
 — zeigt ihn im Replay je Turn plus eine Aktions-Summary, und meldet nach Policy
 eine Warnung, wenn ein als `warn` markierter Typ genutzt wird:
@@ -128,11 +128,34 @@ eine Warnung, wenn ein als `warn` markierter Typ genutzt wird:
 actions: write×1 · shell×1
 ```
 
-Policy via `vantage policy` ansehen, konfigurieren über `.vantage/policy.json` oder
-`VANTAGE_POLICY="shell:warn,network:allow"` (Default: shell+network = warn).
-**Bewusst noch ohne Enforcement** (kein Blocken) — das braucht einen
-request-mutierenden Gate oder native Agent-Hooks (Konzept §6b/c); diese Schicht
-liefert die granulare *Sichtbarkeit*, auf der Enforcement später aufsetzt.
+Vier Stufen je Aktionstyp: `allow` · `warn` (nur Hinweis) · `ask` (Mensch muss
+freigeben) · `deny` (blockiert). Konfiguration über `.vantage/policy.json` oder
+`VANTAGE_POLICY="shell:deny,network:ask"`, Anzeige mit `vantage policy`
+(Default: shell+network = warn).
+
+**Enforcement läuft über den `PreToolUse`-Hook des Agents, nicht über den Proxy.**
+Das ist kein Detail, sondern die einzig mögliche Schicht: Der Proxy sieht eine
+Tool-*Absicht* im Antwortstrom, aber ausgeführt wird das Tool **innerhalb** des
+Agents — es passiert den Proxy nie. Nur der Agent selbst (Hook) oder das
+Betriebssystem (Sandbox) können einen Schreibvorgang oder Shell-Befehl wirklich
+stoppen. An echtem Traffic verifiziert:
+
+```
+$ VANTAGE_POLICY="shell:deny" vantage run claude -- -p "Run 'echo hi' and show the output"
+[vantage] enforcing policy via claude-code PreToolUse hook — shell:deny
+→ "The command was blocked by your Vantage policy, which currently sets shell
+   actions to 'deny'."
+
+$ VANTAGE_POLICY="shell:deny" vantage run claude -- -p "Create control.txt containing ALLOWED"
+→ Created control.txt   # write bleibt erlaubt — es blockt präzise, nicht pauschal
+```
+
+Zwei Sicherheitseigenschaften: Vantage gibt **nie** ein explizites `allow` zurück
+(das würde die eigenen Permission-Regeln des Nutzers aufweichen — Vantage darf nur
+einschränken, nie erweitern), und die Session-Settings werden von Claude Code mit
+den Settings des Nutzers **gemerged**, wobei Listen wie `hooks` kombiniert statt
+ersetzt werden — vorhandene Hooks bleiben also erhalten. Agents ohne Hook-Mechanik
+bleiben beobachtend, und Vantage sagt das ausdrücklich statt Schutz vorzutäuschen.
 
 **Live-Ansicht im zweiten Terminal — bewusst kein Overlay.** `vantage watch`
 zeigt die laufende Session live (Totals, Kosten, Rate, Quota, letzter Turn,
@@ -211,7 +234,8 @@ Proxy getestet, die Anthropic-Kette zusätzlich gegen echten `api.anthropic.com`
 | `src/watch.ts` | Live-Ansicht fürs zweite Terminal (folgt dem Event-Log) |
 | `src/turn.ts` | Turn-Inhalt (Prompt/Antwort/Tools) + Redaction |
 | `src/memory.ts` | Projektgedächtnis (`.vantage/memory/`, Kompilierung/Injektion) |
-| `src/policy.ts` | Aktionstyp-Klassifizierung + Policy (Beobachtungs-Schicht ②) |
+| `src/policy.ts` | Aktionstyp-Klassifizierung + Policy-Stufen (②) |
+| `src/hook.ts` | PreToolUse-Enforcement (ask/deny) über den Agent-Hook |
 | `src/providers/` | Provider-Parser (Anthropic + OpenAI) hinter einem Interface |
 | `src/agents/` | Agent-Adapter (Claude Code, Codex, Aider) |
 | `src/cli.ts` | `run [--isolate]` / `sessions` / `replay` / `review` / `discard` / `demo` |

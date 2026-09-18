@@ -256,7 +256,7 @@ Alle fünf Probleme haben inzwischen Funktionalität, an echtem
 | Problem | Umgesetzt | Stand |
 |---|---|---|
 | ① Kosten/Limit | Meter (Stream + JSON, dekomprimiert), Limit-Prognose aus Rate-Limit-Headern, Schwellwert-Warnung | ✅ |
-| ② Granulare Freigaben | Aktionstyp-Klassifizierung (read/write/shell/network) + Policy-Warnung | ✅ Sichtbarkeit · ⬜ Enforcement |
+| ② Granulare Freigaben | Klassifizierung (read/write/shell/network) + 4 Stufen (allow/warn/ask/deny), enforced via `PreToolUse`-Hook | ✅ |
 | ③ Nachvollziehbarkeit | Event-Log, `replay`-Timeline mit Prompt/Antwort/Tools, `watch`-Live-Ansicht, Redaction | ✅ |
 | ④ Riskante Änderungen | `--isolate` (Git-Worktree/Branch), aggregierter Diff, `review`/`discard` | ✅ |
 | ⑤ Projektgedächtnis | `.vantage/memory/` kompiliert + injiziert (`--append-system-prompt`) | ✅ |
@@ -280,10 +280,24 @@ Zusätzlich über das ursprüngliche Konzept hinaus: eine **Provider-Schicht**
 (Anthropic + OpenAI) hinter einem Interface — der Proxy war sonst faktisch
 Anthropic-only, was der Multi-Agent-These widersprochen hätte.
 
-### Offen
+### Enforcement: warum native Hooks und nicht der Proxy
 
-- **② Enforcement** (echtes Blocken statt Warnen) — Richtungsentscheidung zwischen
-  Proxy-Deny, nativen Agent-Hooks und OS-Sandbox (§6b/c).
+§6b/c ließ drei Wege offen. Die Umsetzung wählte **native Agent-Hooks**, weil die
+Alternativen an einer Tatsache scheitern: **Der Proxy sieht Tool-Absichten, kann
+sie aber nicht stoppen.** Ein Datei-Schreibvorgang oder Shell-Befehl wird
+*innerhalb* des Agents ausgeführt und passiert den Proxy nie — Proxy-Deny könnte
+nur die LLM-Netzwerk-Calls blocken, also gerade nicht read/write/shell. Eine
+OS-Sandbox könnte es, ist aber ein Vielfaches an Aufwand und plattformspezifisch.
+Claude Codes `PreToolUse`-Hook läuft *vor* der Ausführung und liefert eine
+Entscheidung — die einzige Schicht, die sowohl greift als auch den Proxy unberührt
+lässt, auf dem ①③⑤ aufbauen.
+
+Zwei Sicherheitseigenschaften der Umsetzung: Vantage gibt nie ein explizites
+`allow` zurück (es darf nur einschränken, nie erweitern), und `--settings` wird
+von Claude Code mit den Nutzer-Settings gemerged, wobei Listen wie `hooks`
+kombiniert statt ersetzt werden — bestehende Hooks bleiben erhalten.
+
+### Offen
 - **Memory-Harvest**: automatisches Destillieren neuer Entscheide am Session-Ende.
 - **Veröffentlichung**: der npm-Name `vantage` ist belegt; nötig ist ein scoped
   Name (`@user/vantage`) oder eine Alternative.

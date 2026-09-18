@@ -19,6 +19,12 @@ export interface AgentAdapter {
    * context, or null if the agent has no non-invasive injection point.
    */
   contextArgs?(memory: string): string[] | null;
+  /**
+   * Extra CLI args that register Vantage's PreToolUse hook so action-type
+   * policy can be enforced. Absent when the agent exposes no hook mechanism —
+   * such agents degrade to observe-only, and Vantage says so.
+   */
+  enforcementArgs?(settingsPath: string): string[];
 }
 
 // Claude Code respects ANTHROPIC_BASE_URL to redirect its API traffic and
@@ -33,6 +39,12 @@ const claudeCode: AgentAdapter = {
   },
   contextArgs(memory: string): string[] {
     return ["--append-system-prompt", memory];
+  },
+  // --settings is merged with the user's own settings files, and list keys such
+  // as hooks.PreToolUse are combined rather than replaced, so registering our
+  // hook never removes theirs.
+  enforcementArgs(settingsPath: string): string[] {
+    return ["--settings", settingsPath];
   },
 };
 

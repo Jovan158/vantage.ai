@@ -27,7 +27,9 @@ import type { QuotaWarning } from "./ratelimit.ts";
 import { renderTimeline, listSessions } from "./replay.ts";
 import { renderLive, newestSessionId, readSessionEvents } from "./watch.ts";
 import { compileMemory, initMemory, addNote, memoryDir } from "./memory.ts";
-import { loadPolicy, PolicyWatcher } from "./policy.ts";
+import { loadPolicy, PolicyWatcher, needsEnforcement } from "./policy.ts";
+import type { Policy } from "./policy.ts";
+import { runHook, hookSettings } from "./hook.ts";
 import {
   isGitRepo,
   isDirty,
@@ -148,7 +150,8 @@ async function cmdRun(argv: string[]): Promise<number> {
   const eventLog = new EventLog(sessionEventsPath(cwd, sessionId));
   const meter = new Meter();
   const quota = new QuotaWatcher(warnThreshold());
-  const policy = new PolicyWatcher(loadPolicy(cwd));
+  const effectivePolicy = loadPolicy(cwd);
+  const policy = new PolicyWatcher(effectivePolicy);
 
   // Optional git isolation: run the agent in a dedicated worktree/branch so the
   // user's working tree is never touched (CONCEPT.md problem ④).
@@ -207,13 +210,34 @@ async function cmdRun(argv: string[]): Promise<number> {
     },
   });
 
-  // Inject compiled project memory via the agent's native mechanism (⑤).
+  // Enforce action-type policy through the agent's PreToolUse hook (②). Only
+  // the agent can stop a tool it is about to run — the proxy never sees the
+  // execution. Agents without a hook mechanism stay observe-only, said plainly.
   let finalArgs = agentArgs;
+  const hookEnv: Record<string, string> = {};
+  if (needsEnforcement(effectivePolicy)) {
+    if (adapter.enforcementArgs) {
+      const settingsFile = writeHookSettings(cwd, sessionId);
+      finalArgs = [...adapter.enforcementArgs(settingsFile), ...finalArgs];
+      // Pass the resolved policy explicitly: the hook runs with the agent's cwd
+      // (a worktree under --isolate), which may not hold .vantage/policy.json.
+      hookEnv.VANTAGE_POLICY = policyToEnv(effectivePolicy);
+      const enforced = Object.entries(effectivePolicy)
+        .filter(([, l]) => l === "ask" || l === "deny")
+        .map(([t, l]) => `${t}:${l}`)
+        .join(" ");
+      log(`enforcing policy via ${adapter.id} PreToolUse hook — ${enforced}`);
+    } else {
+      log(`policy has enforcing levels, but ${adapter.id} exposes no hook mechanism — observe-only`);
+    }
+  }
+
+  // Inject compiled project memory via the agent's native mechanism (⑤).
   if (useMemory && adapter.contextArgs) {
     const memory = compileMemory(cwd);
     const extra = memory ? adapter.contextArgs(memory) : null;
     if (memory && extra) {
-      finalArgs = [...extra, ...agentArgs];
+      finalArgs = [...extra, ...finalArgs];
       log(`injected project memory (${memory.length} chars) via ${adapter.id}`);
     }
   }
@@ -224,7 +248,7 @@ async function cmdRun(argv: string[]): Promise<number> {
   const child = spawn(adapter.command, finalArgs, {
     cwd: childCwd,
     stdio: "inherit",
-    env: { ...process.env, ...adapter.proxyEnv(proxy.url) },
+    env: { ...process.env, ...adapter.proxyEnv(proxy.url), ...hookEnv },
   });
 
   const forward = (sig: NodeJS.Signals) => () => child.kill(sig);
@@ -423,6 +447,43 @@ async function cmdWatch(argv: string[]): Promise<number> {
   });
 }
 
+// Shell-quote a path for the hook command string in settings.json.
+function q(p: string): string {
+  return `"${p.replace(/(["\\$`])/g, "\\$1")}"`;
+}
+
+// The command Claude Code runs for each PreToolUse event: this very CLI,
+// however it happens to be running (compiled dist, or TS source under Node's
+// type stripping in a dev checkout).
+function hookCommand(): string {
+  const self = fileURLToPath(import.meta.url);
+  const strip = self.endsWith(".ts") ? " --experimental-strip-types" : "";
+  return `${q(process.execPath)}${strip} ${q(self)} hook`;
+}
+
+// Write a session-scoped settings file registering the PreToolUse hook.
+// Claude Code merges --settings with the user's own settings and combines list
+// keys, so this adds our hook without disturbing theirs.
+function writeHookSettings(cwd: string, sessionId: string): string {
+  const file = path.join(sessionDir(cwd, sessionId), "hook-settings.json");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(hookSettings(hookCommand()), null, 2));
+  return file;
+}
+
+function policyToEnv(policy: Policy): string {
+  return Object.entries(policy).map(([k, v]) => `${k}:${v}`).join(",");
+}
+
+// Invoked by Claude Code, not by a human: decide on one pending tool call.
+async function cmdHook(): Promise<number> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+  const out = runHook(Buffer.concat(chunks).toString("utf8"), loadPolicy(process.cwd()));
+  if (out) process.stdout.write(out);
+  return 0; // the JSON decides; exit 0 with no JSON = no decision
+}
+
 async function cmdPolicy(): Promise<number> {
   const cwd = process.cwd();
   const policy = loadPolicy(cwd);
@@ -531,6 +592,9 @@ async function main(): Promise<void> {
       break;
     case "policy":
       process.exit(await cmdPolicy());
+      break;
+    case "hook":
+      process.exit(await cmdHook());
       break;
     case "watch":
       process.exit(await cmdWatch(rest));
