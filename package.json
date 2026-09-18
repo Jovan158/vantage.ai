@@ -13,13 +13,17 @@
     "vantage": "node --experimental-strip-types src/cli.ts",
     "demo": "node --experimental-strip-types src/cli.ts demo",
     "test": "node --experimental-strip-types --test test/*.test.ts",
-    "build": "tsc"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "npm run clean && npm run build"
   },
   "files": [
-    "src",
+    "dist",
     "bin",
     "examples",
-    "docs"
+    "docs",
+    "README.md"
   ],
   "keywords": [
     "ai",
@@ -32,5 +36,9 @@
     "tokens",
     "cost"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.1",
+    "typescript": "^7.0.2"
+  }
 }

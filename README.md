@@ -59,6 +59,30 @@ einen **aggregierten Diff**; danach entscheidest du mergen oder verwerfen:
 [vantage] discard: vantage discard …_y6rf
 ```
 
+### Installation
+
+```bash
+npm install -g vantage     # oder: npx vantage --help
+vantage --help
+```
+
+Das veröffentlichte Paket enthält ein kompiliertes `dist/` — es läuft ohne
+Build-Schritt und ohne TypeScript-Toolchain beim Nutzer. Der Launcher lädt das
+Kompilat **in-process** (kein zusätzlicher Prozess, Signale und stdio gehen
+unverändert durch) und fällt nur im Dev-Checkout ohne Build auf Nodes
+Type-Stripping zurück.
+
+```bash
+# Aus dem Checkout entwickeln
+npm install          # nur TypeScript + @types/node (keine Laufzeit-Deps)
+npm test             # 40 Tests
+npm run typecheck    # tsc --noEmit über src + test
+npm run build        # -> dist/
+npm pack             # baut via prepack und schnürt das Tarball
+```
+
+**Null Laufzeit-Abhängigkeiten** — alles läuft auf Node-Bordmitteln.
+
 ### Ausprobieren (Node ≥ 22.6, keine Installation nötig)
 
 ```bash
