@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { EventLog, sessionDir, type VantageEvent } from "./events.ts";
 import { extractRateLimit, formatRateLimit } from "./ratelimit.ts";
+import { summarizeActions, formatActionSummary } from "./policy.ts";
 
 const C = {
   dim: "\x1b[2m",
@@ -87,6 +88,7 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
   const lines: string[] = [];
   let step = 0;
   let lastQuota: string | null = null;
+  const allTools: string[] = [];
 
   for (const e of events) {
     const at = `${c.gray}${relTime(startMs, Date.parse(e.ts)).padStart(6)}${c.reset}`;
@@ -106,6 +108,7 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
         if (e.prompt) lines.push(`         ${c.dim}prompt:${c.reset} ${e.prompt}`);
         if (e.text) lines.push(`         ${c.dim}reply:${c.reset}  ${e.text}`);
         if (e.tools && e.tools.length) {
+          allTools.push(...e.tools);
           const counts = tally(e.tools);
           lines.push(`         ${c.dim}tools:${c.reset}  ${counts}`);
         }
@@ -129,6 +132,8 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
             (e.exitCode != null ? ` · exit ${e.exitCode}` : "") +
             c.reset
         );
+        const actions = formatActionSummary(summarizeActions(allTools));
+        if (actions) lines.push(`         ${c.dim}actions:${c.reset} ${actions}`);
         break;
       }
     }

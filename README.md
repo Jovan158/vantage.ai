@@ -74,6 +74,7 @@ node bin/vantage.mjs review <sessionId>                 # Diff einer Session ans
 node bin/vantage.mjs discard <sessionId>                # Worktree + Branch verwerfen
 node bin/vantage.mjs memory init                        # Projektgedächtnis anlegen
 node bin/vantage.mjs memory add decisions "..."         # Entscheid festhalten
+node bin/vantage.mjs policy                              # Aktionstyp-Policy ansehen
 ```
 
 **Projektgedächtnis (Problem ⑤).** Dateibasiert unter `.vantage/memory/*.md`
@@ -89,6 +90,23 @@ $ vantage run --no-memory claude -- -p "Greet me in one word" → Hello!
 
 Der kanonische Store ist agent-agnostisch — derselbe Kontext lässt sich pro Agent
 ins jeweils native Format kompilieren (Cross-Agent-Gedächtnis).
+
+**Granulare Aktions-Transparenz (Problem ②, Beobachtungs-Schicht).** Vantage
+klassifiziert jeden Tool-Call nach Typ — **read / write / shell / network / other**
+— zeigt ihn im Replay je Turn plus eine Aktions-Summary, und meldet nach Policy
+eine Warnung, wenn ein als `warn` markierter Typ genutzt wird:
+
+```
+[vantage] ⚠  policy: shell action used (Bash) — policy 'warn' (observe-only, not blocked)
+…
+actions: write×1 · shell×1
+```
+
+Policy via `vantage policy` ansehen, konfigurieren über `.vantage/policy.json` oder
+`VANTAGE_POLICY="shell:warn,network:allow"` (Default: shell+network = warn).
+**Bewusst noch ohne Enforcement** (kein Blocken) — das braucht einen
+request-mutierenden Gate oder native Agent-Hooks (Konzept §6b/c); diese Schicht
+liefert die granulare *Sichtbarkeit*, auf der Enforcement später aufsetzt.
 
 **Session-Replay (Problem ③).** `vantage replay <id>` rendert den Event-Log als
 lesbare Timeline — jeder Turn mit Modell/Tokens/Kosten **und Inhalt** (letzter
@@ -128,6 +146,7 @@ Build-Schritt; ein `dist/`-Build (`npm run build`) ist der Distributionspfad.
 | `src/replay.ts` | Session-Replay: Event-Log → Timeline + Session-Liste |
 | `src/turn.ts` | Turn-Inhalt (Prompt/Antwort/Tools) + Redaction |
 | `src/memory.ts` | Projektgedächtnis (`.vantage/memory/`, Kompilierung/Injektion) |
+| `src/policy.ts` | Aktionstyp-Klassifizierung + Policy (Beobachtungs-Schicht ②) |
 | `src/agents/` | Agent-Adapter (Claude Code, Codex, Aider) |
 | `src/cli.ts` | `run [--isolate]` / `sessions` / `replay` / `review` / `discard` / `demo` |
 | `spike/` | Ursprünglicher Wegwerf-Durchstich, der die Kernannahme bewies |

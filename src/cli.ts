@@ -26,6 +26,7 @@ import { QuotaWatcher } from "./ratelimit.ts";
 import type { QuotaWarning } from "./ratelimit.ts";
 import { renderTimeline, listSessions } from "./replay.ts";
 import { compileMemory, initMemory, addNote, memoryDir } from "./memory.ts";
+import { loadPolicy, PolicyWatcher } from "./policy.ts";
 import {
   isGitRepo,
   isDirty,
@@ -96,6 +97,7 @@ function printHelp(): void {
       `  vantage review <sessionId>\n` +
       `  vantage discard <sessionId>\n` +
       `  vantage memory <init|show|add <category> <text>>\n` +
+      `  vantage policy\n` +
       `  vantage demo\n` +
       `  vantage --help\n\n` +
       `Agents: ${knownAgents().join(", ")}\n\n` +
@@ -144,6 +146,7 @@ async function cmdRun(argv: string[]): Promise<number> {
   const eventLog = new EventLog(sessionEventsPath(cwd, sessionId));
   const meter = new Meter();
   const quota = new QuotaWatcher(warnThreshold());
+  const policy = new PolicyWatcher(loadPolicy(cwd));
 
   // Optional git isolation: run the agent in a dedicated worktree/branch so the
   // user's working tree is never touched (CONCEPT.md problem ④).
@@ -183,6 +186,11 @@ async function cmdRun(argv: string[]): Promise<number> {
       log(meter.statusLine());
       const rl = meter.rateLimitLine();
       if (rl) log(rl);
+      if (e.tools) {
+        for (const notice of policy.observe(e.tools)) {
+          warn({ key: notice.type, level: "warn", message: `policy: ${notice.message}` });
+        }
+      }
     },
     onRateLimit: (snapshot) => {
       meter.setRateLimit(snapshot);
@@ -369,6 +377,18 @@ async function cmdSessions(): Promise<number> {
   return 0;
 }
 
+async function cmdPolicy(): Promise<number> {
+  const cwd = process.cwd();
+  const policy = loadPolicy(cwd);
+  log("action-type policy (observe-only — 'warn' surfaces a notice, nothing is blocked):");
+  for (const [type, level] of Object.entries(policy)) {
+    const mark = level === "warn" ? "\x1b[33m⚠\x1b[0m" : " ";
+    process.stdout.write(`  ${mark} ${type.padEnd(8)} ${level}\n`);
+  }
+  log("configure via .vantage/policy.json or VANTAGE_POLICY=\"shell:warn,network:allow\"");
+  return 0;
+}
+
 async function cmdMemory(argv: string[]): Promise<number> {
   const cwd = process.cwd();
   const sub = argv[0];
@@ -462,6 +482,9 @@ async function main(): Promise<void> {
       break;
     case "memory":
       process.exit(await cmdMemory(rest));
+      break;
+    case "policy":
+      process.exit(await cmdPolicy());
       break;
     case "demo":
       process.exit(await cmdDemo());
