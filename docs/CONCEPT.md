@@ -259,7 +259,7 @@ Alle fünf Probleme haben inzwischen Funktionalität, an echtem
 | ② Granulare Freigaben | Klassifizierung (read/write/shell/network) + 4 Stufen (allow/warn/ask/deny), enforced via `PreToolUse`-Hook | ✅ |
 | ③ Nachvollziehbarkeit | Event-Log, `replay`-Timeline mit Prompt/Antwort/Tools, `watch`-Live-Ansicht, Redaction | ✅ |
 | ④ Riskante Änderungen | `--isolate` (Git-Worktree/Branch), aggregierter Diff, `review`/`discard` | ✅ |
-| ⑤ Projektgedächtnis | `.vantage/memory/` kompiliert + injiziert (`--append-system-prompt`) | ✅ |
+| ⑤ Projektgedächtnis | `.vantage/memory/` kompiliert + injiziert (`--append-system-prompt`), assistierter `harvest` | ✅ |
 
 ### Abweichungen vom ursprünglichen Konzept — und warum
 
@@ -298,6 +298,10 @@ von Claude Code mit den Nutzer-Settings gemerged, wobei Listen wie `hooks`
 kombiniert statt ersetzt werden — bestehende Hooks bleiben erhalten.
 
 ### Offen
-- **Memory-Harvest**: automatisches Destillieren neuer Entscheide am Session-Ende.
+- **Memory-Harvest** ist bewusst *assistiert* statt automatisch gelöst
+  (`vantage harvest`): ein LLM-Call nach jeder Session würde still Quota
+  verbrennen (Problem ①) und ein falsch destillierter Eintrag jede künftige
+  Session vergiften, da Memory in den Kontext injiziert wird. Ein optionales
+  `--llm` für tiefere Destillation bleibt möglich, muss aber explizit sein.
 - **Veröffentlichung**: der npm-Name `vantage` ist belegt; nötig ist ein scoped
   Name (`@user/vantage`) oder eine Alternative.

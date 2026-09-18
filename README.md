@@ -75,7 +75,7 @@ Type-Stripping zurück.
 ```bash
 # Aus dem Checkout entwickeln
 npm install          # nur TypeScript + @types/node (keine Laufzeit-Deps)
-npm test             # 51 Tests
+npm test             # 56 Tests
 npm run typecheck    # tsc --noEmit über src + test
 npm run build        # -> dist/
 npm pack             # baut via prepack und schnürt das Tarball
@@ -86,7 +86,7 @@ npm pack             # baut via prepack und schnürt das Tarball
 ### Ausprobieren (Node ≥ 22.6, keine Installation nötig)
 
 ```bash
-npm test          # 51 Tests: Proxy-Transparenz & Resilienz, Usage (Anthropic+OpenAI),
+npm test          # 56 Tests: Proxy-Transparenz & Resilienz, Usage (Anthropic+OpenAI),
                   # Rate-Limit, Quota, Git-Isolation, Replay, Watch, Memory, Policy
 npm run demo      # komplette Kette gegen einen Mock-Upstream (kein API-Key nötig)
 
@@ -98,6 +98,7 @@ node bin/vantage.mjs sessions                           # vergangene Sessions au
 node bin/vantage.mjs replay <sessionId>                 # Session als Timeline abspielen
 node bin/vantage.mjs review <sessionId>                 # Diff einer Session ansehen
 node bin/vantage.mjs discard <sessionId>                # Worktree + Branch verwerfen
+node bin/vantage.mjs harvest [sessionId]                # Memory-Vorschlag aus Session
 node bin/vantage.mjs memory init                        # Projektgedächtnis anlegen
 node bin/vantage.mjs memory add decisions "..."         # Entscheid festhalten
 node bin/vantage.mjs policy                              # Aktionstyp-Policy ansehen
@@ -116,6 +117,30 @@ $ vantage run --no-memory claude -- -p "Greet me in one word" → Hello!
 
 Der kanonische Store ist agent-agnostisch — derselbe Kontext lässt sich pro Agent
 ins jeweils native Format kompilieren (Cross-Agent-Gedächtnis).
+
+**Harvest — assistiert, nicht automatisch.** Nach einer Session, die etwas getan
+hat, weist Vantage mit *einer* Zeile auf `vantage harvest <id>` hin. Das bereitet
+das Material auf und schlägt einen fertigen Befehl vor:
+
+```
+harvest · session 2026-09-18T11-31-28-722Z_0k4i
+3 turn(s) · ~$0.0604 (est.) · write×1
+
+  what the agent said it did
+    Created notes.txt containing "HARVEST".
+
+  files changed
+    notes.txt
+
+Nothing is written automatically. Record what is worth keeping:
+  vantage memory add decisions "Created notes.txt containing \"HARVEST\"."
+```
+
+Bewusst **kein** automatisches LLM-Destillieren am Session-Ende: Das würde bei
+jeder Session still Quota verbrennen — genau Problem ①, gegen das Vantage antritt —
+und ein falsch destillierter Eintrag vergiftet jede künftige Session, weil Memory
+in den Kontext injiziert wird. Die beste Zusammenfassung ohne LLM liefert ohnehin
+der Agent selbst: seine Abschluss-Antwort.
 
 **Granulare Freigaben (Problem ②).** Vantage
 klassifiziert jeden Tool-Call nach Typ — **read / write / shell / network / other**
@@ -234,6 +259,7 @@ Proxy getestet, die Anthropic-Kette zusätzlich gegen echten `api.anthropic.com`
 | `src/watch.ts` | Live-Ansicht fürs zweite Terminal (folgt dem Event-Log) |
 | `src/turn.ts` | Turn-Inhalt (Prompt/Antwort/Tools) + Redaction |
 | `src/memory.ts` | Projektgedächtnis (`.vantage/memory/`, Kompilierung/Injektion) |
+| `src/harvest.ts` | Assistierter Harvest: Session-Material → Memory-Vorschlag |
 | `src/policy.ts` | Aktionstyp-Klassifizierung + Policy-Stufen (②) |
 | `src/hook.ts` | PreToolUse-Enforcement (ask/deny) über den Agent-Hook |
 | `src/providers/` | Provider-Parser (Anthropic + OpenAI) hinter einem Interface |

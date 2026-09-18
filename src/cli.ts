@@ -26,6 +26,7 @@ import { QuotaWatcher } from "./ratelimit.ts";
 import type { QuotaWarning } from "./ratelimit.ts";
 import { renderTimeline, listSessions } from "./replay.ts";
 import { renderLive, newestSessionId, readSessionEvents } from "./watch.ts";
+import { collectHarvest, renderHarvest, worthHarvesting } from "./harvest.ts";
 import { compileMemory, initMemory, addNote, memoryDir } from "./memory.ts";
 import { loadPolicy, PolicyWatcher, needsEnforcement } from "./policy.ts";
 import type { Policy } from "./policy.ts";
@@ -98,6 +99,7 @@ function printHelp(): void {
       `  vantage watch [sessionId]\n` +
       `  vantage sessions\n` +
       `  vantage replay <sessionId>\n` +
+      `  vantage harvest [sessionId]\n` +
       `  vantage review <sessionId>\n` +
       `  vantage discard <sessionId>\n` +
       `  vantage memory <init|show|add <category> <text>>\n` +
@@ -277,6 +279,12 @@ async function cmdRun(argv: string[]): Promise<number> {
 
       if (worktree) reportIsolatedChanges(cwd, sessionId, worktree, adapter.id);
 
+      // One quiet line, only when the session actually did something — memory
+      // is never written automatically (see src/harvest.ts).
+      if (worthHarvesting(eventLog.readAll())) {
+        log(`worth remembering? vantage harvest ${sessionId}`);
+      }
+
       await proxy.close();
       resolve(code ?? 0);
     });
@@ -381,6 +389,32 @@ async function cmdReplay(argv: string[]): Promise<number> {
   }
   const events = new EventLog(logPath).readAll();
   process.stdout.write(renderTimeline(events, process.stdout.isTTY ?? false) + "\n");
+  return 0;
+}
+
+async function cmdHarvest(argv: string[]): Promise<number> {
+  const cwd = process.cwd();
+  const sessionId = argv[0] ?? newestSessionId(cwd);
+  if (!sessionId) {
+    log("usage: vantage harvest [sessionId]  (see: vantage sessions)");
+    return 1;
+  }
+  const events = readSessionEvents(cwd, sessionId);
+  if (events.length === 0) {
+    log(`no session "${sessionId}" found under .vantage/sessions/`);
+    return 1;
+  }
+
+  // Changed files come from the isolation branch when the session had one.
+  let files: string[] = [];
+  const meta = readMeta(cwd, sessionId);
+  if (meta?.isolated && meta.branch && meta.baseSha) {
+    const res = gitSafe(cwd, ["diff", "--name-only", meta.baseSha, meta.branch]);
+    if (res.ok) files = res.stdout.split("\n").filter(Boolean);
+  }
+
+  const harvest = collectHarvest(sessionId, events, files);
+  process.stdout.write(renderHarvest(harvest, process.stdout.isTTY ?? false) + "\n");
   return 0;
 }
 
@@ -586,6 +620,9 @@ async function main(): Promise<void> {
       break;
     case "replay":
       process.exit(await cmdReplay(rest));
+      break;
+    case "harvest":
+      process.exit(await cmdHarvest(rest));
       break;
     case "memory":
       process.exit(await cmdMemory(rest));
