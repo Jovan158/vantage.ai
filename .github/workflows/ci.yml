@@ -48,7 +48,9 @@ jobs:
       - run: npm ci
 
       - name: Pack (runs the build via prepack)
-        run: npm pack --pack-destination /tmp/pkg
+        run: |
+          mkdir -p /tmp/pkg
+          npm pack --pack-destination /tmp/pkg
 
       - name: Install the tarball into a clean project
         run: |
