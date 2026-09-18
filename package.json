@@ -1,0 +1,36 @@
+{
+  "name": "vantage",
+  "version": "0.0.1",
+  "description": "Control & transparency layer over AI-coding CLI agents (Claude Code, Codex, Aider, ...)",
+  "type": "module",
+  "bin": {
+    "vantage": "bin/vantage.mjs"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "vantage": "node --experimental-strip-types src/cli.ts",
+    "demo": "node --experimental-strip-types src/cli.ts demo",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "build": "tsc"
+  },
+  "files": [
+    "src",
+    "bin",
+    "examples",
+    "docs"
+  ],
+  "keywords": [
+    "ai",
+    "cli",
+    "claude-code",
+    "codex",
+    "aider",
+    "proxy",
+    "observability",
+    "tokens",
+    "cost"
+  ],
+  "license": "MIT"
+}
