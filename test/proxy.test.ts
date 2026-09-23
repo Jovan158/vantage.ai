@@ -57,9 +57,10 @@ test("proxy streams transparently and extracts usage", async () => {
   assert.equal(u.cache_read, EXPECTED_USAGE.cache_read_input_tokens);
   assert.equal(u.model, EXPECTED_USAGE.model);
 
-  // 3. cost estimate: (1024*3 + 87*15 + 512*0.3) / 1e6
-  const expectedCost = (1024 * 3 + 87 * 15 + 512 * 0.3) / 1e6;
-  assert.ok(Math.abs(u.cost_usd - expectedCost) < 1e-6, `cost ~$${expectedCost}`);
+  // 3. cost estimate at Claude Sonnet 5 list prices ($2 in, $10 out, $0.20
+  //    cache read per MTok): (1024*2 + 87*10 + 512*0.2) / 1e6
+  const expectedCost = (1024 * 2 + 87 * 10 + 512 * 0.2) / 1e6;
+  assert.ok(u.cost_usd !== null && Math.abs(u.cost_usd - expectedCost) < 1e-6, `cost ~$${expectedCost}`);
 
   await proxy.close();
   await mock.close();

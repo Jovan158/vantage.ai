@@ -7,6 +7,7 @@
 
 import type { UsageEvent } from "./events.ts";
 import { formatRateLimit } from "./ratelimit.ts";
+import { formatCost } from "./pricing.ts";
 import type { RateLimitSnapshot } from "./ratelimit.ts";
 
 export interface MeterTotals {
@@ -16,6 +17,8 @@ export interface MeterTotals {
   cacheRead: number;
   cacheWrite: number;
   costUsd: number;
+  /** Requests whose model had no known price (not included in costUsd). */
+  unpriced: number;
 }
 
 export class Meter {
@@ -26,6 +29,7 @@ export class Meter {
     cacheRead: 0,
     cacheWrite: 0,
     costUsd: 0,
+    unpriced: 0,
   };
   // (timestampMs, cumulativeOutput) samples for a rolling rate.
   private samples: Array<[number, number]> = [];
@@ -46,7 +50,8 @@ export class Meter {
     this.totals.output += e.out;
     this.totals.cacheRead += e.cache_read;
     this.totals.cacheWrite += e.cache_write;
-    this.totals.costUsd += e.cost_usd;
+    if (e.cost_usd === null) this.totals.unpriced += 1;
+    else this.totals.costUsd += e.cost_usd;
 
     this.samples.push([nowMs, this.totals.output]);
     const cutoff = nowMs - this.windowMs;
@@ -81,7 +86,7 @@ export class Meter {
       t.cacheWrite > 0
         ? `cache ${fmt(t.cacheRead)}r/${fmt(t.cacheWrite)}w`
         : `cache ${fmt(t.cacheRead)}`,
-      `~$${t.costUsd.toFixed(4)} (est.)`,
+      formatCost(t.costUsd, t.unpriced, t.requests),
     ];
     if (rate > 0) parts.push(`${fmt(rate)} out/min`);
     return parts.join(" · ");

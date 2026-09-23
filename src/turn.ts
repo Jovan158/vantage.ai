@@ -59,6 +59,8 @@ interface AnthropicUsage {
   output_tokens?: number;
   cache_creation_input_tokens?: number;
   cache_read_input_tokens?: number;
+  // Real Claude Code traffic reports the TTL split of cache writes here.
+  cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number };
 }
 
 function applyUsage(u: TokenUsage, from: AnthropicUsage | undefined): void {
@@ -69,6 +71,8 @@ function applyUsage(u: TokenUsage, from: AnthropicUsage | undefined): void {
     u.cache_creation_input_tokens = from.cache_creation_input_tokens;
   if (typeof from.cache_read_input_tokens === "number")
     u.cache_read_input_tokens = from.cache_read_input_tokens;
+  if (typeof from.cache_creation?.ephemeral_1h_input_tokens === "number")
+    u.cache_write_1h_tokens = from.cache_creation.ephemeral_1h_input_tokens;
 }
 
 export interface TurnExtractor {
@@ -207,10 +211,21 @@ export function extractUserPrompt(body: string): string | null {
   for (let i = msgs.length - 1; i >= 0; i--) {
     const m = msgs[i]!;
     if (m.role !== "user") continue;
-    const text = contentToText(m.content);
+    const text = stripInjectedContext(contentToText(m.content));
     if (text) return truncate(text, MAX_TEXT);
   }
   return null;
+}
+
+// Claude Code prepends its own <system-reminder> blocks (environment, memory,
+// user info) to the user's message. They are not what the user typed, and at
+// the front of a truncated preview they hide it completely — so drop them. An
+// unclosed block (body capture cut off) is dropped to the end.
+export function stripInjectedContext(text: string): string {
+  return text
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, " ")
+    .replace(/<system-reminder>[\s\S]*$/, " ")
+    .trim();
 }
 
 function contentToText(content: unknown): string {

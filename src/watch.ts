@@ -12,6 +12,7 @@ import { EventLog, sessionDir, type VantageEvent } from "./events.ts";
 import { extractRateLimit, formatRateLimit } from "./ratelimit.ts";
 import { summarizeActions, formatActionSummary } from "./policy.ts";
 import { summarize } from "./replay.ts";
+import { formatCost } from "./pricing.ts";
 
 const C = {
   dim: "\x1b[2m",
@@ -86,7 +87,7 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
   );
   const rate = Math.round(outputRate(events, now));
   lines.push(
-    `  ${c.dim}cost${c.reset}   ${c.bold}~$${s.costUsd.toFixed(4)}${c.reset} ${c.dim}(est.)${c.reset}` +
+    `  ${c.dim}cost${c.reset}   ${c.bold}${formatCost(s.costUsd, s.unpriced, s.requests)}${c.reset}` +
       (rate > 0 && !ended ? `   ${c.dim}rate${c.reset} ${fmtTokens(rate)}/min` : "")
   );
 

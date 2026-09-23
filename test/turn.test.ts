@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createTurnExtractor, extractTurnFromJson, extractUserPrompt } from "../src/turn.ts";
+import { createTurnExtractor, extractTurnFromJson, extractUserPrompt, stripInjectedContext } from "../src/turn.ts";
 
 function frame(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -86,4 +86,49 @@ test("extractUserPrompt returns the last user message (string or blocks)", () =>
     "second"
   );
   assert.equal(extractUserPrompt("not json"), null);
+});
+
+// Claude Code prepends <system-reminder> blocks to the user's message; the
+// preview must show what the user typed, not that context.
+test("prompt preview drops injected system-reminder blocks", () => {
+  const body = JSON.stringify({
+    messages: [{
+      role: "user",
+      content: [
+        { type: "text", text: "<system-reminder>\n# userEmail\nThe user's email address is a@b.io.\n</system-reminder>" },
+        { type: "text", text: "Hallo, fix the login bug" },
+      ],
+    }],
+  });
+  assert.equal(extractUserPrompt(body), "Hallo, fix the login bug");
+
+  // Same, when the reminder shares one text block with the message.
+  const inline = JSON.stringify({
+    messages: [{ role: "user", content: "<system-reminder>ctx</system-reminder>\nrename foo to bar" }],
+  });
+  assert.equal(extractUserPrompt(inline), "rename foo to bar");
+});
+
+test("an unclosed reminder (cut-off capture) is dropped to the end", () => {
+  assert.equal(stripInjectedContext("do X <system-reminder> half a block"), "do X");
+});
+
+test("the 1-hour cache-write share is read from real usage objects", () => {
+  const ex = createTurnExtractor();
+  ex.feed(frame("message_start", {
+    type: "message_start",
+    message: {
+      model: "claude-opus-5-5",
+      usage: {
+        input_tokens: 2,
+        cache_creation_input_tokens: 77000,
+        cache_read_input_tokens: 0,
+        cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 77000 },
+        output_tokens: 1,
+      },
+    },
+  }));
+  const t = ex.end();
+  assert.equal(t.usage.cache_creation_input_tokens, 77000);
+  assert.equal(t.usage.cache_write_1h_tokens, 77000);
 });

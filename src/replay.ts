@@ -7,6 +7,7 @@ import path from "node:path";
 import { EventLog, sessionDir, type VantageEvent } from "./events.ts";
 import { extractRateLimit, formatRateLimit } from "./ratelimit.ts";
 import { summarizeActions, formatActionSummary } from "./policy.ts";
+import { formatCost } from "./pricing.ts";
 
 const C = {
   dim: "\x1b[2m",
@@ -48,6 +49,7 @@ export interface SessionSummary {
   cacheRead: number;
   cacheWrite: number;
   costUsd: number;
+  unpriced: number;
   exitCode: number | null | undefined;
 }
 
@@ -63,6 +65,7 @@ export function summarize(sessionId: string, events: VantageEvent[]): SessionSum
     cacheRead: 0,
     cacheWrite: 0,
     costUsd: 0,
+    unpriced: 0,
     exitCode: undefined,
   };
   for (const e of events) {
@@ -77,7 +80,8 @@ export function summarize(sessionId: string, events: VantageEvent[]): SessionSum
       s.output += e.out;
       s.cacheRead += e.cache_read;
       s.cacheWrite += e.cache_write;
-      s.costUsd += e.cost_usd;
+      if (e.cost_usd === null) s.unpriced += 1;
+      else s.costUsd += e.cost_usd;
     }
   }
   return s;
@@ -102,7 +106,7 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
       case "usage": {
         step += 1;
         const model = e.model ?? "?";
-        const cost = `$${e.cost_usd.toFixed(4)}`;
+        const cost = e.cost_usd === null ? "$? (price unknown)" : `$${e.cost_usd.toFixed(4)}`;
         lines.push(
           `${at} ${c.cyan}▸ turn ${step}${c.reset} ${c.dim}${model}${c.reset} · ` +
             `in ${fmtTokens(e.in)} · out ${c.green}${fmtTokens(e.out)}${c.reset} · ` +
@@ -132,7 +136,7 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
           `${at} ${c.bold}● session end${c.reset} ${c.dim}· ${s.requests} turn(s) · ` +
             `in ${fmtTokens(s.input)} · out ${fmtTokens(s.output)} · ` +
             `cache ${fmtTokens(s.cacheRead)}r/${fmtTokens(s.cacheWrite)}w · ` +
-            `~$${s.costUsd.toFixed(4)} (est.)` +
+            formatCost(s.costUsd, s.unpriced, s.requests) +
             (e.exitCode != null ? ` · exit ${e.exitCode}` : "") +
             c.reset
         );

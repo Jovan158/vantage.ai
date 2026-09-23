@@ -162,7 +162,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
             out: u.output_tokens,
             cache_read: u.cache_read_input_tokens,
             cache_write: u.cache_creation_input_tokens,
-            cost_usd: Number(estimateCostUsd(u).toFixed(6)),
+            cost_usd: ((c) => (c === null ? null : Number(c.toFixed(6))))(estimateCostUsd(u)),
             ...(prompt ? { prompt } : {}),
             ...(turn.text ? { text: turn.text } : {}),
             ...(turn.tools.length ? { tools: turn.tools.map((t) => t.name) } : {}),

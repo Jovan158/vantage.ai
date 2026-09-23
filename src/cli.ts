@@ -32,6 +32,7 @@ import { loadPolicy, PolicyWatcher, needsEnforcement } from "./policy.ts";
 import type { Policy } from "./policy.ts";
 import { runHook, hookSettings, hookInvocation } from "./hook.ts";
 import { resolveCommand } from "./resolve.ts";
+import { formatCost } from "./pricing.ts";
 import {
   isGitRepo,
   isDirty,
@@ -303,7 +304,7 @@ async function cmdRun(argv: string[]): Promise<number> {
       const t = meter.snapshot();
       log(
         `session end · ${t.requests} request(s) · in ${t.input} · out ${t.output} · ` +
-          `cache ${t.cacheRead}r/${t.cacheWrite}w · ~$${t.costUsd.toFixed(4)} (est.)`
+          `cache ${t.cacheRead}r/${t.cacheWrite}w · ${formatCost(t.costUsd, t.unpriced, t.requests)}`
       );
       const rl = meter.rateLimitLine();
       if (rl) log(rl);
@@ -463,7 +464,7 @@ async function cmdSessions(): Promise<number> {
     process.stdout.write(
       `${s.sessionId}${flags}\n` +
         `  ${when} · ${s.agent ?? "?"} · ${s.requests} turn(s) · ` +
-        `out ${s.output} · ~$${s.costUsd.toFixed(4)} (est.)\n`
+        `out ${s.output} · ${formatCost(s.costUsd, s.unpriced, s.requests)}\n`
     );
   }
   log(`replay one with: vantage replay <sessionId>`);
@@ -617,7 +618,7 @@ async function cmdDemo(): Promise<number> {
       const t = meter.snapshot();
       log(
         `demo end · in ${t.input} · out ${t.output} · cache ${t.cacheRead} · ` +
-          `~$${t.costUsd.toFixed(4)} (est.)`
+          formatCost(t.costUsd, t.unpriced, t.requests)
       );
       await proxy.close();
       await mock.close();

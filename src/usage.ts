@@ -13,6 +13,9 @@ export interface TokenUsage {
   output_tokens: number;
   cache_creation_input_tokens: number;
   cache_read_input_tokens: number;
+  /** Share of cache_creation_input_tokens written with the 1-hour TTL, when
+   * the response reports the split (usage.cache_creation.ephemeral_1h_input_tokens). */
+  cache_write_1h_tokens?: number;
 }
 
 interface AnthropicUsageFields {
@@ -20,6 +23,7 @@ interface AnthropicUsageFields {
   output_tokens?: number;
   cache_creation_input_tokens?: number;
   cache_read_input_tokens?: number;
+  cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number };
 }
 
 export interface UsageExtractor {
@@ -68,6 +72,8 @@ export function createUsageExtractor(): UsageExtractor {
       usage.cache_creation_input_tokens = u.cache_creation_input_tokens;
     if (typeof u.cache_read_input_tokens === "number")
       usage.cache_read_input_tokens = u.cache_read_input_tokens;
+    if (typeof u.cache_creation?.ephemeral_1h_input_tokens === "number")
+      usage.cache_write_1h_tokens = u.cache_creation.ephemeral_1h_input_tokens;
   }
 
   function handleFrame(frame: string): void {

@@ -13,6 +13,7 @@
 import type { VantageEvent } from "./events.ts";
 import { summarize } from "./replay.ts";
 import { summarizeActions, formatActionSummary } from "./policy.ts";
+import { formatCost } from "./pricing.ts";
 
 const C = {
   dim: "\x1b[2m",
@@ -29,6 +30,7 @@ export interface Harvest {
   sessionId: string;
   turns: number;
   costUsd: number;
+  unpriced: number;
   /** The agent's own closing summary — the most useful no-LLM signal. */
   closingReply: string | null;
   actions: string | null;
@@ -54,6 +56,7 @@ export function collectHarvest(
     sessionId,
     turns: s.requests,
     costUsd: s.costUsd,
+    unpriced: s.unpriced,
     closingReply,
     actions: formatActionSummary(summarizeActions(tools)),
     files: changedFiles,
@@ -70,7 +73,7 @@ export function renderHarvest(h: Harvest, color = true): string {
   const lines: string[] = [];
 
   lines.push(`${c.bold}harvest${c.reset} ${c.dim}· session ${h.sessionId}${c.reset}`);
-  lines.push(`${c.dim}${h.turns} turn(s) · ~$${h.costUsd.toFixed(4)} (est.)${h.actions ? ` · ${h.actions}` : ""}${c.reset}`);
+  lines.push(`${c.dim}${h.turns} turn(s) · ${formatCost(h.costUsd, h.unpriced, h.turns)}${h.actions ? ` · ${h.actions}` : ""}${c.reset}`);
   lines.push("");
 
   if (h.closingReply) {

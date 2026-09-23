@@ -13,7 +13,8 @@ export interface UsageEvent {
   out: number;
   cache_read: number;
   cache_write: number;
-  cost_usd: number;
+  /** Estimated USD, or null when the model's price is unknown. */
+  cost_usd: number | null;
   // Optional turn content (problem ③) — previews, not full transcripts.
   prompt?: string;
   text?: string;

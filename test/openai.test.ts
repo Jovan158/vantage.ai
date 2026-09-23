@@ -137,7 +137,9 @@ test("full proxy chain works against an OpenAI-format upstream", async () => {
   assert.equal(u.in, 200);
   assert.equal(u.out, 12);
   assert.equal(u.cache_read, 150);
-  assert.ok(u.cost_usd > 0, "cost estimated from the OpenAI price table");
+  // OpenAI prices are not verified, so the cost is reported as unknown rather
+  // than guessed — metering (tokens) is unaffected.
+  assert.equal(u.cost_usd, null, "unverified model price -> cost unknown");
 
   // 3. content capture works: prompt from the request, reply from the stream
   assert.equal(u.prompt, "say hi");

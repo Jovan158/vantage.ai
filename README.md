@@ -33,6 +33,14 @@ was Claude Code real zurückgibt — 5h-/7d-Auslastung + Reset) und die **klassi
 Per-Key-Buckets** (API-Key-Billing — requests/tokens remaining). Genau der
 Abo-Quota-Fall, den reine Token-Zählung nicht abbilden kann.
 
+**Kosten sind eine Schätzung zu API-Listenpreisen** (`src/pricing.ts`, Quelle und
+Abrufdatum im Datei-Kopf): exakter Lookup pro Modell-ID, Cache-Writes getrennt
+nach 5-Minuten- und 1-Stunden-TTL. Unbekannte Modelle werden als `price unknown`
+ausgewiesen statt geraten — Tokens werden trotzdem gezählt. Im Abo ist der
+Dollarbetrag nur ein API-Äquivalent; das echte Signal ist die Quota-Zeile. (Die
+Beispielausgaben in diesem README stammen aus früheren Läufen; die Beträge darin
+sind illustrativ.)
+
 Bei Annäherung ans Limit warnt Vantage auffällig — **einmalig** beim Überschreiten
 der Schwelle (kein Spam), re-armiert nach Reset, und meldet akute Fälle
 (`rejected`, `retry-after`) sofort:
