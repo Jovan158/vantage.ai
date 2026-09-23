@@ -804,8 +804,7 @@ async function cmdWatch(argv: string[]): Promise<number> {
       return false;
     });
 
-  const detail = (ref: SessionRef): string | null => {
-    const events = readSessionEvents(ref.cwd, ref.sessionId);
+  const detail = (ref: SessionRef, events = readSessionEvents(ref.cwd, ref.sessionId)): string | null => {
     if (events.length === 0) return null;
     return renderLive(events, {
       sessionId: ref.sessionId,
@@ -819,6 +818,7 @@ async function cmdWatch(argv: string[]): Promise<number> {
     // The first tick runs right away and may already stop (a pinned session
     // that has ended), before the interval exists.
     let timer: ReturnType<typeof setInterval> | undefined;
+    let pinnedRef: SessionRef | null = null;
     let stopped = false;
     const stop = (): void => {
       stopped = true;
@@ -832,11 +832,13 @@ async function cmdWatch(argv: string[]): Promise<number> {
       // A pinned session: found here or anywhere this machine recorded it;
       // watching ends with it.
       if (pinned) {
-        const ref = findSession(pinned, cwd);
-        if (!ref) return draw(`no session ${pinned} found — see \`vantage sessions\` or \`vantage search\``);
-        const frame = detail(ref);
+        pinnedRef ??= findSession(pinned, cwd);
+        if (!pinnedRef) return draw(`no session ${pinned} found — see \`vantage sessions\` or \`vantage search\``);
+        const events = readSessionEvents(pinnedRef.cwd, pinnedRef.sessionId);
+        const frame = detail(pinnedRef, events);
         if (frame) draw(frame);
-        if (readSessionEvents(ref.cwd, ref.sessionId).some((e) => e.type === "session_end")) stop();
+        // Ended, or its vantage process is gone (crashed without an end).
+        if (events.some((e) => e.type === "session_end") || !sessionRunning(pinnedRef)) stop();
         return;
       }
       // Otherwise: several running sessions side by side, one running

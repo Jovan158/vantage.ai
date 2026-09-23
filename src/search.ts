@@ -18,6 +18,8 @@ export type HitKind = "message" | "reply" | "file" | "command" | "call" | "chang
 export interface Hit {
   ts: number;
   kind: HitKind;
+  /** For blocked/asked: whether the call was about a file or a command. */
+  about?: "file" | "command";
   /** Short verb shown before the text: "edited", "ran", "you", … */
   label: string;
   text: string;
@@ -47,9 +49,9 @@ function callHit(ts: number, tool: string, target: string | undefined): Hit {
   return { ts, kind: "call", label: tool, text: target ?? "" };
 }
 
-function inScope(kind: HitKind, scope: Scope): boolean {
-  if (scope === "files") return kind === "file" || kind === "changed";
-  if (scope === "commands") return kind === "command";
+function inScope(h: Hit, scope: Scope): boolean {
+  if (scope === "files") return h.kind === "file" || h.kind === "changed" || h.about === "file";
+  if (scope === "commands") return h.kind === "command" || h.about === "command";
   return true;
 }
 
@@ -60,8 +62,9 @@ export function searchSession(ref: SessionRef, events: VantageEvent[], query: st
   const needle = query.toLowerCase();
   const hits: Hit[] = [];
   const add = (h: Hit): void => {
-    if (!inScope(h.kind, scope)) return;
-    if (!`${h.label} ${h.text}`.toLowerCase().includes(needle)) return;
+    if (!inScope(h, scope)) return;
+    // The text only: labels like "claude" or "ran" would match every hit.
+    if (!h.text.toLowerCase().includes(needle)) return;
     hits.push({ ...h, text: shortenPaths(h.text, project) });
   };
 
@@ -77,7 +80,9 @@ export function searchSession(ref: SessionRef, events: VantageEvent[], query: st
       const calls: Array<{ tool: string; target?: string }> = e.calls ?? (e.tools ?? []).map((tool) => ({ tool }));
       for (const k of calls) add(callHit(ts, k.tool, k.target));
     } else if (e.type === "decision") {
-      add({ ts, kind: e.decision === "deny" ? "blocked" : "asked", label: e.decision === "deny" ? "blocked" : "asked", text: `${e.tool} ${e.target ?? ""}`.trim() });
+      const call = callHit(ts, e.tool, e.target);
+      const about = call.kind === "file" || call.kind === "command" ? call.kind : undefined;
+      add({ ts, kind: e.decision === "deny" ? "blocked" : "asked", label: e.decision === "deny" ? "blocked" : "asked", text: `${e.tool} ${e.target ?? ""}`.trim(), ...(about ? { about } : {}) });
     } else if (e.type === "secret") {
       add({ ts, kind: "secret", label: "secret sent", text: `${e.kind} from ${e.source}` });
     } else if (e.type === "session_end" && e.changes) {

@@ -99,14 +99,27 @@ export class EventLog {
     fs.appendFileSync(this.filePath, JSON.stringify(event) + "\n");
   }
 
+  // A damaged line — a torn write when vantage was killed mid-append, or two
+  // processes appending at once — is skipped, so the rest of the session
+  // stays readable.
   readAll(): VantageEvent[] {
     if (!fs.existsSync(this.filePath)) return [];
-    return fs
-      .readFileSync(this.filePath, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as VantageEvent);
+    return parseEventLines(fs.readFileSync(this.filePath, "utf8"));
   }
+}
+
+export function parseEventLines(text: string): VantageEvent[] {
+  const out: VantageEvent[] = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const e = JSON.parse(line) as VantageEvent;
+      if (e && typeof e === "object" && typeof e.type === "string") out.push(e);
+    } catch {
+      /* skip the damaged line */
+    }
+  }
+  return out;
 }
 
 // Calls onEvent for every event appended to the log from now on — including

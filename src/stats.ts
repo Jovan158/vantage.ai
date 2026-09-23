@@ -15,6 +15,7 @@ import type { SessionRef } from "./home.ts";
 
 export interface SessionStat {
   ref: SessionRef;
+  /** Full project path: two projects named alike stay apart. */
   project: string;
   startedMs: number;
   messages: number;
@@ -57,7 +58,7 @@ export function sessionStat(ref: SessionRef, events: VantageEvent[]): SessionSta
   for (const e of events) if (e.type === "usage") tokens += e.in + e.out + e.cache_read + e.cache_write;
   return {
     ref,
-    project: projectName((start.type === "session_start" && start.project) || ref.cwd),
+    project: (start.type === "session_start" && start.project) || ref.cwd,
     startedMs: Date.parse(start.ts),
     messages: s.messages,
     requests: s.requests,
@@ -154,6 +155,17 @@ export function renderStats(all: SessionStat[], opts: StatsOptions): string {
 
   const lines: string[] = [];
   const projects = new Set(stats.map((s) => s.project));
+  // Folder names for display; with the parent folder when two share a name.
+  const label = new Map<string, string>();
+  const byName = new Map<string, string[]>();
+  for (const p of projects) byName.set(projectName(p), [...(byName.get(projectName(p)) ?? []), p]);
+  for (const [n, paths] of byName) {
+    for (const p of paths) {
+      const parts = p.split(/[\\/]/).filter(Boolean);
+      label.set(p, paths.length > 1 ? parts.slice(-2).join("/") : n);
+    }
+  }
+  const show = (p: string): string => label.get(p) ?? projectName(p);
   lines.push(
     `${c.bold}Usage${c.reset} ${c.dim}· last ${opts.days} day(s) · ${stats.length} session(s) in ${projects.size} project(s)${c.reset}`
   );
@@ -191,10 +203,10 @@ export function renderStats(all: SessionStat[], opts: StatsOptions): string {
   lines.push("");
   lines.push(`${c.bold}By project${c.reset} ${c.dim}· weekly limit share is approximate: other Claude use at the same time counts too${c.reset}`);
   const byProject = [...group(stats, (s) => s.project).entries()].sort((a, z) => z[1].costUsd - a[1].costUsd);
-  const nameWidth = Math.min(24, Math.max(...byProject.map(([n]) => n.length)));
-  for (const [name, g] of byProject) {
+  const nameWidth = Math.min(24, Math.max(...byProject.map(([p]) => show(p).length)));
+  for (const [project, g] of byProject) {
     lines.push(
-      `  ${fit(name, nameWidth).padEnd(nameWidth)}  ${formatCost(g.costUsd, g.unpriced, g.requests).padEnd(9)} ` +
+      `  ${fit(show(project), nameWidth).padEnd(nameWidth)}  ${formatCost(g.costUsd, g.unpriced, g.requests).padEnd(9)} ` +
         `${c.dim}weekly ${pct(g.quota7d).padEnd(5)} ${String(g.sessions).padStart(2)} session(s) · ${g.messages} message(s) · ${g.files} file change(s)${c.reset}`
     );
   }
@@ -206,7 +218,7 @@ export function renderStats(all: SessionStat[], opts: StatsOptions): string {
     const d = new Date(s.startedMs);
     const when = `${dayLabel(s.startedMs)} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
     lines.push(
-      `  ${formatCost(s.costUsd, s.unpriced, s.requests).padEnd(9)} ${c.dim}${when}  ${fit(s.project, 16).padEnd(16)}  ${fmtTokens(s.tokens).padStart(5)} tokens${c.reset}  ` +
+      `  ${formatCost(s.costUsd, s.unpriced, s.requests).padEnd(9)} ${c.dim}${when}  ${fit(show(s.project), 16).padEnd(16)}  ${fmtTokens(s.tokens).padStart(5)} tokens${c.reset}  ` +
         `${fit(s.firstPrompt ?? "(no prompt captured)", 60)}`
     );
     lines.push(`  ${c.dim}${" ".repeat(9)} vantage replay ${s.ref.sessionId}${opts.cwd && path.resolve(s.ref.cwd) === path.resolve(opts.cwd) ? "" : `   (in ${s.ref.cwd})`}${c.reset}`);

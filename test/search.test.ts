@@ -34,9 +34,15 @@ test("messages, replies, files, commands, blocks and changes are found; backgrou
   assert.equal(searchSession(ref, events, "Current state"), null);
 });
 
-test("--files and --commands narrow the search", () => {
+test("--files and --commands narrow the search, blocked calls included", () => {
   assert.deepEqual(searchSession(ref, events, "fetch", "files")!.hits.map((h) => h.label), ["read", "edited", "changed"]);
   assert.deepEqual(searchSession(ref, events, "fetch", "commands")!.hits.map((h) => h.text), ["npm test -- fetch"]);
+  assert.deepEqual(searchSession(ref, events, "push", "commands")!.hits.map((h) => `${h.label} ${h.text}`), ["blocked Bash git push --force"]);
+});
+
+test("labels are not searched: 'claude' or 'ran' do not match every hit", () => {
+  assert.equal(searchSession(ref, events, "claude"), null);
+  assert.equal(searchSession(ref, events, "ran"), null);
 });
 
 test("results: newest session first, the match shown in context", () => {

@@ -57,6 +57,15 @@ test("sessions are summed by day and by project, largest first", () => {
   assert.match(out, /vantage replay s3 {3}\(in C:\\Users\\me\\web\)/);
 });
 
+test("two projects with the same folder name stay apart", () => {
+  const a = sessionStat({ cwd: "/work/api", sessionId: "a" }, session("/work/api", day(0, 9), 1, [0.1, 0.1]))!;
+  const b = sessionStat({ cwd: "/oss/api", sessionId: "b" }, session("/oss/api", day(0, 10), 2, [0.1, 0.1]))!;
+  const out = renderStats([a, b], { days: 1, nowMs: NOW, color: false });
+  assert.match(out, /2 session\(s\) in 2 project\(s\)/);
+  assert.match(out, /oss\/api\s+~\$2\.0000/);
+  assert.match(out, /work\/api\s+~\$1\.0000/);
+});
+
 test("a quota reset inside a session is not counted as negative use", () => {
   const events: VantageEvent[] = [
     { ts: at(day(0, 9)), type: "session_start", agent: "claude-code", project: "/p" },

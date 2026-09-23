@@ -61,7 +61,7 @@ export interface DecideContext {
 
 export function decide(toolName: string, policy: Policy, budget: BudgetState | null = null, ctx: DecideContext = {}): Verdict {
   const type = classifyTool(toolName);
-  const match = matchRules(ctx.input, ctx.rules ?? [], ctx.cwd);
+  const match = matchRules(ctx.input, ctx.rules ?? [], ctx.cwd, undefined, policy[type]);
   const level = match ? match.level : policy[type];
   if (budget && (level === "allow" || level === "warn")) {
     return {

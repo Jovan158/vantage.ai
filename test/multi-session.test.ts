@@ -127,3 +127,13 @@ test("`vantage watch` from another directory: overview for two running sessions,
   assert.match(pinned.out, /ended \(exit 0\)/);
   for (const d of [home, a, b, elsewhere]) fs.rmSync(d, { recursive: true, force: true });
 });
+
+test("`vantage watch <id>` stops for a session whose vantage crashed", async () => {
+  const home = tmp("vantage-home-");
+  const project = tmp("vantage-p-");
+  const dead = spawnSync(process.execPath, ["-e", ""]).pid!;
+  writeSession(project, "crashed1", [start(project, dead)]);
+  const r = await watchFor(["crashed1"], project, home, 10_000);
+  assert.equal(r.code, 0, "exits on its own instead of watching forever");
+  for (const d of [home, project]) fs.rmSync(d, { recursive: true, force: true });
+});
