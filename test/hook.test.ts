@@ -2,7 +2,10 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decide, buildOutput, runHook, hookSettings, parseHookInput } from "../src/hook.ts";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { decide, buildOutput, runHook, hookSettings, hookInvocation, parseHookInput } from "../src/hook.ts";
 import type { Policy } from "../src/policy.ts";
 
 const policy = (over: Partial<Policy> = {}): Policy => ({
@@ -65,12 +68,46 @@ test("unknown tools are classified before being judged", () => {
   assert.equal(decide("SomeCustomEditor", policy({ write: "ask" })).decision, "ask");
 });
 
-test("settings fragment registers a PreToolUse hook for every tool", () => {
-  const s = hookSettings('"/usr/bin/node" "/x/cli.js" hook') as {
-    hooks: { PreToolUse: Array<{ matcher: string; hooks: Array<{ type: string; command: string }> }> };
+test("settings fragment registers the hook in exec form (no shell)", () => {
+  const inv = hookInvocation("/usr/bin/node", "/x/dist/cli.js");
+  const s = hookSettings(inv) as {
+    hooks: { PreToolUse: Array<{ matcher: string; hooks: Array<{ type: string; command: string; args: string[] }> }> };
   };
   const entry = s.hooks.PreToolUse[0]!;
   assert.equal(entry.matcher, "*");
   assert.equal(entry.hooks[0]!.type, "command");
-  assert.match(entry.hooks[0]!.command, /cli\.js" hook$/);
+  assert.equal(entry.hooks[0]!.command, "/usr/bin/node");
+  assert.deepEqual(entry.hooks[0]!.args, ["/x/dist/cli.js", "hook"]);
+});
+
+test("a TypeScript entry gets type stripping, a compiled one does not", () => {
+  assert.deepEqual(hookInvocation("node", "/a/src/cli.ts").args, ["--experimental-strip-types", "/a/src/cli.ts", "hook"]);
+  assert.deepEqual(hookInvocation("node", "/a/dist/cli.js").args, ["/a/dist/cli.js", "hook"]);
+});
+
+// End to end, on whatever OS runs the suite: spawn the exact invocation we
+// register — command + args, NO shell, as Claude Code does in exec form — feed
+// it a real PreToolUse payload, and check the decision on stdout. On the
+// Windows CI runner this exercises real Windows paths, the case that shell
+// quoting would have broken.
+test("the registered invocation runs and blocks a denied tool", () => {
+  const entry = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.ts");
+  const inv = hookInvocation(process.execPath, entry);
+  const payload = JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "echo hi" } });
+
+  const denied = spawnSync(inv.command, inv.args, {
+    input: payload,
+    encoding: "utf8",
+    env: { ...process.env, VANTAGE_POLICY: "shell:deny" },
+  });
+  assert.equal(denied.status, 0, denied.stderr);
+  assert.equal(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecision, "deny");
+
+  const allowed = spawnSync(inv.command, inv.args, {
+    input: payload,
+    encoding: "utf8",
+    env: { ...process.env, VANTAGE_POLICY: "shell:allow" },
+  });
+  assert.equal(allowed.status, 0, allowed.stderr);
+  assert.equal(allowed.stdout, "", "no decision -> normal permission flow");
 });

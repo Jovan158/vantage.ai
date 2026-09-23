@@ -7,10 +7,13 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        # Windows is here because a Windows user hit `rm -rf` in the clean
+        # script — a failure no Linux-only run could have caught.
+        os: [ubuntu-latest, windows-latest]
         # 22.6 is the floor declared in package.json engines (type stripping);
         # 24 guards against regressions on current Node.
         node: ["22.x", "24.x"]
@@ -32,6 +35,11 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # Runs `prepack` (clean + build) on every OS — the exact step that broke
+      # on Windows. --dry-run packs nothing but executes the lifecycle scripts.
+      - name: Pack (portability check)
+        run: npm pack --dry-run
 
   package:
     # The distributable artifact is only real if it installs and runs somewhere

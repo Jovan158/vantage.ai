@@ -95,16 +95,33 @@ export function runHook(rawInput: string, policy: Policy): string {
   return output ? JSON.stringify(output) : "";
 }
 
+// How the agent should invoke this CLI's `hook` subcommand: node plus the entry
+// script, in EXEC form (command + args, no shell). Exec form sidesteps quoting
+// entirely — on Windows the hook would otherwise run under Git Bash or
+// PowerShell, each with its own rules for backslashes and spaces in paths —
+// and the docs name `node` + script path as the pattern that works on every
+// platform, because node is a real binary.
+export interface HookInvocation {
+  command: string;
+  args: string[];
+}
+
+export function hookInvocation(execPath: string, entry: string): HookInvocation {
+  // A dev checkout runs the TypeScript source, which needs type stripping.
+  const strip = entry.endsWith(".ts") ? ["--experimental-strip-types"] : [];
+  return { command: execPath, args: [...strip, entry, "hook"] };
+}
+
 // The settings fragment that registers this hook. Claude Code merges
 // `--settings` with the user's own files and COMBINES list keys such as
 // hooks.PreToolUse, so this adds our hook without removing theirs.
-export function hookSettings(command: string): object {
+export function hookSettings(inv: HookInvocation): object {
   return {
     hooks: {
       PreToolUse: [
         {
           matcher: "*",
-          hooks: [{ type: "command", command }],
+          hooks: [{ type: "command", command: inv.command, args: inv.args }],
         },
       ],
     },

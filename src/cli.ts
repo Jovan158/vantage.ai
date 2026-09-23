@@ -30,7 +30,7 @@ import { collectHarvest, renderHarvest, worthHarvesting } from "./harvest.ts";
 import { compileMemory, initMemory, addNote, memoryDir } from "./memory.ts";
 import { loadPolicy, PolicyWatcher, needsEnforcement } from "./policy.ts";
 import type { Policy } from "./policy.ts";
-import { runHook, hookSettings } from "./hook.ts";
+import { runHook, hookSettings, hookInvocation } from "./hook.ts";
 import {
   isGitRepo,
   isDirty,
@@ -481,27 +481,14 @@ async function cmdWatch(argv: string[]): Promise<number> {
   });
 }
 
-// Shell-quote a path for the hook command string in settings.json.
-function q(p: string): string {
-  return `"${p.replace(/(["\\$`])/g, "\\$1")}"`;
-}
-
-// The command Claude Code runs for each PreToolUse event: this very CLI,
-// however it happens to be running (compiled dist, or TS source under Node's
-// type stripping in a dev checkout).
-function hookCommand(): string {
-  const self = fileURLToPath(import.meta.url);
-  const strip = self.endsWith(".ts") ? " --experimental-strip-types" : "";
-  return `${q(process.execPath)}${strip} ${q(self)} hook`;
-}
-
 // Write a session-scoped settings file registering the PreToolUse hook.
 // Claude Code merges --settings with the user's own settings and combines list
 // keys, so this adds our hook without disturbing theirs.
 function writeHookSettings(cwd: string, sessionId: string): string {
   const file = path.join(sessionDir(cwd, sessionId), "hook-settings.json");
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(hookSettings(hookCommand()), null, 2));
+  const inv = hookInvocation(process.execPath, fileURLToPath(import.meta.url));
+  fs.writeFileSync(file, JSON.stringify(hookSettings(inv), null, 2));
   return file;
 }
 
