@@ -110,3 +110,23 @@ test("`vantage run` reports the session's changes, and `vantage review` shows th
   assert.deepEqual(JSON.parse(end).changes, { files: ["app.js"], added: 1, removed: 0 });
   for (const d of [dir, home]) fs.rmSync(d, { recursive: true, force: true });
 });
+
+test("session logs and worktrees stay out of git; rules and memory stay versioned", async () => {
+  const { ensureVantageGitignore } = await import("../src/events.ts");
+  const dir = repo();
+  assert.equal(ensureVantageGitignore(dir), true);
+  const put = (rel: string): void => {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), "x\n");
+  };
+  put(".vantage/sessions/s1/events.jsonl");
+  put(".vantage/worktrees/s1/app.js");
+  put(".vantage/policy.json");
+  put(".vantage/memory/decisions.md");
+  const untracked = sh(dir, "status", "--porcelain", "--untracked-files=all").split("\n").map((l) => l.slice(3)).sort();
+  assert.deepEqual(untracked, [".vantage/.gitignore", ".vantage/memory/decisions.md", ".vantage/policy.json"]);
+
+  fs.appendFileSync(path.join(dir, ".vantage", ".gitignore"), "mine/\n");
+  assert.equal(ensureVantageGitignore(dir), false, "an existing file is left alone");
+  assert.match(fs.readFileSync(path.join(dir, ".vantage", ".gitignore"), "utf8"), /mine\/\n$/);
+});

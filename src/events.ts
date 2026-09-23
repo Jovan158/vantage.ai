@@ -175,6 +175,27 @@ export function sessionDir(cwd: string, sessionId: string): string {
   return path.join(cwd, ".vantage", "sessions", sessionId);
 }
 
+const VANTAGE_GITIGNORE = `# Written by Vantage. Session logs hold excerpts of prompts and replies, and
+# worktrees are separate checkouts: neither belongs in the repository.
+# Rules (policy.json) and project memory (memory/) stay versioned.
+sessions/
+worktrees/
+`;
+
+// Keeps session logs out of git without touching the project's own
+// .gitignore. An existing file is left alone, edited or not. Returns whether
+// it was written.
+export function ensureVantageGitignore(cwd: string): boolean {
+  const file = path.join(cwd, ".vantage", ".gitignore");
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, VANTAGE_GITIGNORE, { flag: "wx" });
+    return true;
+  } catch {
+    return false; // already there, or not writable — the run goes on either way
+  }
+}
+
 export function sessionEventsPath(cwd: string, sessionId: string): string {
   return path.join(sessionDir(cwd, sessionId), "events.jsonl");
 }

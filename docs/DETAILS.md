@@ -227,6 +227,12 @@ Auszüge werden gekürzt gespeichert und durch einen **Redaction-Pass** von offe
 sichtlichen Secrets/PII (E-Mails, API-Keys, Bearer-Token, JWTs) bereinigt, bevor
 sie in den Event-Log geschrieben werden (Konzept §6d).
 
+**Nicht im Repository.** Die Protokolle enthalten Auszüge aus Prompts und
+Antworten. Beim ersten `vantage run` legt Vantage deshalb `.vantage/.gitignore`
+an, das `sessions/` und `worktrees/` ausschließt; `policy.json` und `memory/`
+bleiben versionierbar. Die eigene `.gitignore` des Projekts wird nicht
+angefasst, und eine vorhandene `.vantage/.gitignore` bleibt, wie sie ist.
+
 **Aufräumen.** Jede Session bleibt unter `.vantage/sessions/` liegen, bis man
 sie löscht. `vantage sessions prune` zeigt die Sessions dieses Projekts, in die
 seit 30 Tagen nichts mehr geschrieben wurde, samt Größe — gelöscht wird erst mit

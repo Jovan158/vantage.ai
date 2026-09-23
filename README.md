@@ -133,7 +133,8 @@ Claude Code's `PreToolUse` hook, because tools run inside Claude Code and never
 pass through the proxy.
 
 Each session is recorded in the project's `.vantage/sessions/`, including
-excerpts of prompts and replies, so add that folder to `.gitignore`.
+excerpts of prompts and replies. Vantage keeps it out of git with its own
+`.vantage/.gitignore`, so rules and project memory can still be committed.
 `vantage sessions prune` deletes old sessions. The price list and the index
 that `watch`, `stats` and `search` use across projects are kept in `~/.vantage`.
 

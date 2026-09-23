@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { startProxy } from "../proxy.ts";
 import { Meter } from "../meter.ts";
-import { EventLog, newSessionId, sessionDir, sessionEventsPath, type UsageEvent } from "../events.ts";
+import { EventLog, ensureVantageGitignore, newSessionId, sessionDir, sessionEventsPath, type UsageEvent } from "../events.ts";
 import { resolveAdapter, knownAgents } from "../agents/index.ts";
 import { QuotaWatcher } from "../ratelimit.ts";
 import { shortenPaths } from "../replay.ts";
@@ -113,6 +113,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
   const upstream = process.env.VANTAGE_UPSTREAM ?? adapter.defaultUpstream;
   const cwd = process.cwd();
   const sessionId = newSessionId();
+  if (ensureVantageGitignore(cwd)) log("created .vantage/.gitignore — session logs stay out of git");
   const eventLog = new EventLog(sessionEventsPath(cwd, sessionId));
   const meter = new Meter();
   const quota = new QuotaWatcher(warnThreshold());
