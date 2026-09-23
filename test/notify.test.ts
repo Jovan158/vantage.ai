@@ -8,7 +8,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { notifyCommand, Notifier, notificationsEnabled } from "../src/notify.ts";
+import { notifyCommand, Notifier } from "../src/notify.ts";
+import { parseConfig, loadConfig, enabledNotifyKinds, NOTIFY_KINDS } from "../src/config.ts";
 import { followEvents } from "../src/events.ts";
 
 const TRICKY = `it's "done" & $(rm -rf /); echo pwned`;
@@ -26,21 +27,47 @@ test("title and text travel in the environment, never in a command string", () =
   assert.equal(notifyCommand("aix", "t", "b"), null);
 });
 
-test("each kind of event notifies once per cooldown", () => {
+test("only enabled kinds are sent, titled with the project, once per cooldown", () => {
   const sent: string[] = [];
-  const n = new Notifier((title, body) => sent.push(`${title}|${body}`), 60_000);
-  assert.equal(n.notify("quota:5h", "Limit", "92%", 0), true);
-  assert.equal(n.notify("quota:5h", "Limit", "93%", 30_000), false);
-  assert.equal(n.notify("ask:1", "Approve", "Bash", 30_000), true);
-  assert.equal(n.notify("quota:5h", "Limit", "95%", 61_000), true);
-  assert.deepEqual(sent, ["Limit|92%", "Approve|Bash", "Limit|95%"]);
+  const n = new Notifier((title, body) => sent.push(`${title}|${body}`), {
+    kinds: new Set(["limits", "approval"] as const),
+    project: "vantage.dev",
+    cooldownMs: 60_000,
+  });
+  assert.equal(n.notify("limits", "quota:5h", "Usage limit", "92%", 0), true);
+  assert.equal(n.notify("limits", "quota:5h", "Usage limit", "93%", 30_000), false, "cooldown");
+  assert.equal(n.notify("done", "done:1", "Claude is done", "x", 30_000), false, "kind turned off");
+  assert.equal(n.notify("approval", "ask:1", "Waiting", "Bash", 30_000), true);
+  assert.equal(n.notify("limits", "quota:5h", "Usage limit", "95%", 61_000), true);
+  assert.deepEqual(sent, ["vantage.dev · Usage limit|92%", "vantage.dev · Waiting|Bash", "vantage.dev · Usage limit|95%"]);
 });
 
-test("on while the chat UI has the terminal, off otherwise; VANTAGE_NOTIFY overrides", () => {
-  assert.equal(notificationsEnabled(true, {}), true);
-  assert.equal(notificationsEnabled(false, {}), false);
-  assert.equal(notificationsEnabled(true, { VANTAGE_NOTIFY: "0" }), false);
-  assert.equal(notificationsEnabled(false, { VANTAGE_NOTIFY: "1" }), true);
+test("settings: all off, single kinds off, and what overrides what", () => {
+  const all = new Set(NOTIFY_KINDS);
+  const kinds = (config: unknown, interactive: boolean, env: NodeJS.ProcessEnv = {}, noNotifyFlag = false) =>
+    [...enabledNotifyKinds(parseConfig(config), { interactive, env, noNotifyFlag })].sort();
+
+  assert.deepEqual(kinds({}, true), [...all].sort(), "default: everything while the chat is open");
+  assert.deepEqual(kinds({}, false), [], "default: nothing in print mode");
+  assert.deepEqual(kinds({ notify: false }, true), []);
+  assert.deepEqual(kinds({ notify: { done: false, limits: false } }, true), ["approval", "budget", "secrets"]);
+  assert.deepEqual(kinds({}, true, { VANTAGE_NOTIFY: "0" }), [], "env beats the file");
+  assert.deepEqual(kinds({ notify: false }, false, { VANTAGE_NOTIFY: "1" }).length, all.size);
+  assert.deepEqual(kinds({}, true, { VANTAGE_NOTIFY: "1" }, true), [], "--no-notify beats everything");
+
+  assert.throws(() => parseConfig({ notify: { dnoe: false } }), /unknown notification kind "dnoe"/);
+  assert.throws(() => parseConfig({ notify: "off" }), /must be true, false or an object/);
+});
+
+test("a broken settings file is reported and the defaults apply", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vantage-config-"));
+  const file = path.join(dir, "config.json");
+  fs.writeFileSync(file, "{ notify: nope");
+  const r = loadConfig(file);
+  assert.deepEqual(r.config, { notify: true });
+  assert.match(r.error ?? "", /config\.json/);
+  assert.deepEqual(loadConfig(path.join(dir, "missing.json")), { config: { notify: true }, error: null });
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("followEvents delivers lines other processes append, including split writes", async () => {

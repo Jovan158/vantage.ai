@@ -83,6 +83,7 @@ Options for `run`:
 | --- | --- |
 | `--isolate` | Work in a separate git worktree and branch |
 | `--no-memory` | Don't pass project memory to Claude Code |
+| `--no-notify` | No desktop notifications for this session |
 | `--max-cost <usd>` | Require approval for every action once the estimated cost reaches this |
 | `--max-quota <percent>` | Same, once a quota window is this full |
 
@@ -120,6 +121,11 @@ past them.
 | `VANTAGE_NOTIFY` | `0` turns desktop notifications off, `1` turns them on outside the chat UI too |
 | `VANTAGE_AGENT_PATH` | Path to Claude Code if it is not found on `PATH` |
 | `VANTAGE_DEBUG=1` | Log upstream status and rate-limit headers |
+
+Desktop notifications can be tuned in `~/.vantage/config.json` — all off with
+`{ "notify": false }`, or single kinds, e.g. `{ "notify": { "done": false } }`.
+Kinds: `approval`, `done`, `limits`, `budget`, `secrets`. `--no-notify` and
+`VANTAGE_NOTIFY` take precedence over the file.
 
 Cost is an estimate of what the traffic would cost on the API at list price. On a
 subscription, the quota line is what counts.

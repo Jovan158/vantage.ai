@@ -38,7 +38,8 @@ import type { Policy } from "./policy.ts";
 import { runHook, hookSettings, hookInvocation, decisionRecord } from "./hook.ts";
 import { resolveCommand } from "./resolve.ts";
 import { TerminalGate } from "./terminal.ts";
-import { Notifier, systemSend, notificationsEnabled } from "./notify.ts";
+import { Notifier, systemSend } from "./notify.ts";
+import { loadConfig, enabledNotifyKinds, configPath } from "./config.ts";
 import {
   BudgetGuard,
   budgetStatePath,
@@ -134,7 +135,7 @@ function printHelp(): void {
   process.stdout.write(
     `vantage — see and control what Claude Code does\n\n` +
       `Usage:\n` +
-      `  vantage run [--isolate] [--no-memory] [--max-cost <usd>] [--max-quota <percent>]\n` +
+      `  vantage run [--isolate] [--no-memory] [--no-notify] [--max-cost <usd>] [--max-quota <percent>]\n` +
       `              <agent> [-- <agent args...>]\n` +
       `  vantage watch [sessionId]\n` +
       `  vantage sessions\n` +
@@ -169,6 +170,7 @@ async function cmdRun(argv: string[]): Promise<number> {
   // Leading vantage-level flags come before the agent name.
   let isolate = false;
   let useMemory = true;
+  let noNotify = false;
   let costRaw = process.env.VANTAGE_MAX_COST;
   let quotaRaw = process.env.VANTAGE_MAX_QUOTA;
   const rest = [...argv];
@@ -180,6 +182,7 @@ async function cmdRun(argv: string[]): Promise<number> {
     if (flag === "--isolate") isolate = true;
     else if (flag === "--no-isolate") isolate = false;
     else if (flag === "--no-memory") useMemory = false;
+    else if (flag === "--no-notify") noNotify = true;
     else if (flag === "--max-cost") costRaw = value();
     else if (flag === "--max-quota") quotaRaw = value();
     else {
@@ -234,7 +237,10 @@ async function cmdRun(argv: string[]): Promise<number> {
   // Claude Code's chat UI owns the terminal from launch until exit; Vantage
   // then speaks through `vantage watch` and desktop notifications only.
   const interactive = adapter.isInteractive(agentArgs) && Boolean(process.stderr.isTTY);
-  const notifier = notificationsEnabled(interactive) ? new Notifier(systemSend()) : null;
+  const { config, error: configError } = loadConfig();
+  if (configError) log(`ignored settings — ${configError}`);
+  const notifyKinds = enabledNotifyKinds(config, { interactive, noNotifyFlag: noNotify });
+  const notifier = notifyKinds.size > 0 ? new Notifier(systemSend(), { kinds: notifyKinds, project: path.basename(cwd) }) : null;
   let lastRequestMs = 0;
   const seenSecrets = new Set<string>();
   let messageStartMs: number | null = null;
@@ -245,7 +251,7 @@ async function cmdRun(argv: string[]): Promise<number> {
     eventLog.append({ ts: new Date().toISOString(), type: "budget", state: change.kind, reason: change.reason });
     if (change.kind === "reached") {
       warn({ key: "budget", level: "critical", message: `budget reached — ${change.reason}. Every action now needs your approval.` });
-      notifier?.notify("budget", "Vantage: budget reached", `${change.reason}. Claude now asks before every action.`);
+      notifier?.notify("budget", "budget", "Budget reached", `${change.reason}. Claude now asks before every action.`);
     } else {
       log(`budget: ${change.reason} — actions run as before`);
     }
@@ -312,7 +318,7 @@ async function cmdRun(argv: string[]): Promise<number> {
         const article = /^[aeiou]/i.test(f.kind) ? "an" : "a";
         const message = `${article} ${f.kind} (${f.masked}) was sent to the API, from ${source} — rotate it if it should not leave your machine`;
         warn({ key: `secret:${f.fingerprint}`, level: "critical", message });
-        notifier?.notify(`secret:${f.fingerprint}`, "Vantage: secret sent to the API", `${f.kind} from ${source}`);
+        notifier?.notify("secrets", `secret:${f.fingerprint}`, "Secret sent to the API", `${f.kind} from ${source}`);
       }
       if (info.background) return;
       eventLog.append({ ts: new Date().toISOString(), type: "request" });
@@ -328,7 +334,7 @@ async function cmdRun(argv: string[]): Promise<number> {
       if (!e.background && e.stopReason !== "tool_use" && messageStartMs !== null) {
         const took = Date.now() - messageStartMs;
         if (took >= 30_000) {
-          notifier?.notify(`done:${messageStartMs}`, "Claude is done", `Finished after ${Math.round(took / 1000)}s${e.prompt ? `: ${e.prompt.slice(0, 80)}` : ""}`);
+          notifier?.notify("done", `done:${messageStartMs}`, "Claude is done", `Finished after ${Math.round(took / 1000)}s${e.prompt ? `: ${e.prompt.slice(0, 80)}` : ""}`);
         }
         messageStartMs = null;
       }
@@ -355,7 +361,7 @@ async function cmdRun(argv: string[]): Promise<number> {
       });
       for (const w of quota.update(snapshot)) {
         warn(w);
-        notifier?.notify(`quota:${w.key}`, "Vantage: usage limit", w.message);
+        notifier?.notify("limits", `quota:${w.key}`, "Usage limit", w.message);
       }
       if (guard) onBudget(guard.onQuota(snapshot), guard.blindSpots([], snapshot));
     },
@@ -451,7 +457,7 @@ async function cmdRun(argv: string[]): Promise<number> {
   // `vantage watch` and alerts wait until the end.
   if (interactive) {
     log("live view: run `vantage watch` in a second terminal — Vantage stays quiet here until Claude Code exits");
-    if (notifier) log("desktop notifications on (VANTAGE_NOTIFY=0 turns them off)");
+    if (notifier) log(`desktop notifications: ${[...notifyKinds].join(", ")} (settings: ${configPath()}, off: --no-notify)`);
     terminal.hold();
   }
 
@@ -464,7 +470,7 @@ async function cmdRun(argv: string[]): Promise<number> {
         const askedMs = Date.parse(e.ts);
         setTimeout(() => {
           if (lastRequestMs > askedMs) return;
-          notifier.notify(`ask:${e.ts}`, "Claude is waiting for your approval", `${e.tool}${e.target ? ` ${e.target}` : ""}`);
+          notifier.notify("approval", `ask:${e.ts}`, "Claude is waiting for your approval", `${e.tool}${e.target ? ` ${e.target}` : ""}`);
         }, 10_000).unref();
       })
     : () => {};

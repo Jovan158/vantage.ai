@@ -10,6 +10,7 @@
 // convenience and must never disturb the session.
 
 import { spawn } from "node:child_process";
+import type { NotifyKind } from "./config.ts";
 
 export interface NotifyCommand {
   command: string;
@@ -79,32 +80,33 @@ export function systemSend(platform: NodeJS.Platform = process.platform): Send {
   };
 }
 
-// Deduplicates by key: each kind of event notifies once per cooldown, so a
-// quota hovering at 90% does not fire on every request.
-export class Notifier {
-  private readonly send: Send;
-  private readonly cooldownMs: number;
-  private readonly last = new Map<string, number>();
-
-  constructor(send: Send, cooldownMs = 10 * 60_000) {
-    this.send = send;
-    this.cooldownMs = cooldownMs;
-  }
-
-  notify(key: string, title: string, body: string, nowMs = Date.now()): boolean {
-    const prev = this.last.get(key);
-    if (prev !== undefined && nowMs - prev < this.cooldownMs) return false;
-    this.last.set(key, nowMs);
-    this.send(title, body);
-    return true;
-  }
+export interface NotifierOptions {
+  /** Kinds to send (see config.ts); others are dropped. */
+  kinds: Set<NotifyKind>;
+  /** Shown first in every title, so parallel sessions can be told apart. */
+  project?: string;
+  cooldownMs?: number;
 }
 
-// Whether to notify at all: on by default while Claude Code's chat UI has the
-// terminal (the only time Vantage cannot speak there), off otherwise.
-// VANTAGE_NOTIFY=1 or 0 overrides.
-export function notificationsEnabled(interactive: boolean, env = process.env): boolean {
-  if (env.VANTAGE_NOTIFY === "0") return false;
-  if (env.VANTAGE_NOTIFY === "1") return true;
-  return interactive;
+// Sends only the enabled kinds, titled with the project, and deduplicates by
+// key: each event notifies once per cooldown, so a quota hovering at 90%
+// does not fire on every request.
+export class Notifier {
+  private readonly send: Send;
+  private readonly opts: NotifierOptions;
+  private readonly last = new Map<string, number>();
+
+  constructor(send: Send, opts: NotifierOptions) {
+    this.send = send;
+    this.opts = opts;
+  }
+
+  notify(kind: NotifyKind, key: string, title: string, body: string, nowMs = Date.now()): boolean {
+    if (!this.opts.kinds.has(kind)) return false;
+    const prev = this.last.get(key);
+    if (prev !== undefined && nowMs - prev < (this.opts.cooldownMs ?? 10 * 60_000)) return false;
+    this.last.set(key, nowMs);
+    this.send(this.opts.project ? `${this.opts.project} · ${title}` : title, body);
+    return true;
+  }
 }
