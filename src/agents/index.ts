@@ -51,13 +51,17 @@ const claudeCode: AgentAdapter = {
 // Claude Code only, for now. Adapters for Codex CLI and Aider existed but were
 // metering-only and never tested against the real tools, so they were removed
 // rather than shipped half-done.
+// Keyed by the command users type. `claude-code` (the adapter id that logs and
+// replays show) is accepted too, but not advertised: one name to learn.
 const ADAPTERS: Record<string, AgentAdapter> = {
   claude: claudeCode,
-  "claude-code": claudeCode,
+};
+const ALIASES: Record<string, string> = {
+  "claude-code": "claude",
 };
 
 export function resolveAdapter(name: string): AgentAdapter | undefined {
-  return ADAPTERS[name];
+  return ADAPTERS[ALIASES[name] ?? name];
 }
 
 export function knownAgents(): string[] {
