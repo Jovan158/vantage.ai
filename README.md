@@ -64,7 +64,7 @@ a task that took a while, or nears a limit or budget.
 | Command | Description |
 | --- | --- |
 | `vantage run [options] claude [-- args]` | Start Claude Code through Vantage |
-| `vantage watch [id]` | Live view of the latest session, from any directory |
+| `vantage watch [id]` | Live view, from any directory: all running sessions side by side, or one in detail |
 | `vantage sessions` | List past sessions |
 | `vantage stats [--days N]` | Usage by day and project, and the largest sessions |
 | `vantage search <text> [--files \| --commands]` | Which session did what: messages, files, commands, blocks |

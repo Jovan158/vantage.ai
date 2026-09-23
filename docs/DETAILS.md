@@ -181,6 +181,12 @@ Activity · read×2 · write×1 · shell×1 · 1 file(s) edited
   Agent fertig?“) zählen bei Kosten mit, nicht als Turn.
 - **context:** wie viele Tokens mit der letzten Nachricht mitgeschickt wurden, und
   wie viel davon aus dem Cache kam (günstig).
+- **Mehrere Sessions:** Laufen mehrere gleichzeitig, zeigt `vantage watch` eine
+  Übersicht — die Limits einmal (sie gelten fürs ganze Konto), darunter jede
+  Session mit Status, Kosten und Nachrichten. `vantage watch <id>` zeigt eine
+  davon im Detail, egal aus welchem Ordner. Laufend heißt: kein Session-Ende im
+  Protokoll und der `vantage run`-Prozess lebt noch — abgestürzte Sessions
+  erscheinen also nicht als laufend.
 - **Activity:** die letzten Tool-Aufrufe mit Datei, Befehl oder URL — relativ zum
   Projekt —, markiert, wenn Vantage blockiert (`blocked`) oder nachgefragt
   (`asked`) hat.

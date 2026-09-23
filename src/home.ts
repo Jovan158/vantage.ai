@@ -40,6 +40,45 @@ export function recordLastSession(ref: SessionRef): void {
   }
 }
 
+// Is the process still there? Signal 0 only checks; EPERM means it exists but
+// belongs to someone else. Works on Windows too.
+export function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+// Running = no session_end yet and its `vantage run` process is alive. Only
+// the first and last lines of the log are read, so this stays cheap for long
+// sessions. Logs from before the pid was recorded count as running while
+// they were written to in the last 30 minutes.
+export function sessionRunning(ref: SessionRef, nowMs = Date.now()): boolean {
+  const file = sessionEventsPath(ref.cwd, ref.sessionId);
+  let fd: number | null = null;
+  try {
+    const size = fs.statSync(file).size;
+    fd = fs.openSync(file, "r");
+    const headBuf = Buffer.alloc(Math.min(size, 4096));
+    fs.readSync(fd, headBuf, 0, headBuf.length, 0);
+    const tailLen = Math.min(size, 4096);
+    const tailBuf = Buffer.alloc(tailLen);
+    fs.readSync(fd, tailBuf, 0, tailLen, size - tailLen);
+    const last = tailBuf.toString("utf8").trim().split("\n").at(-1) ?? "";
+    if (last.includes('"type":"session_end"')) return false;
+    const first = headBuf.toString("utf8").split("\n")[0] ?? "";
+    const pid = (JSON.parse(first) as { pid?: unknown }).pid;
+    if (typeof pid === "number") return processAlive(pid);
+    return nowMs - fs.statSync(file).mtimeMs < 30 * 60_000;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+}
+
 // A session by id: in `cwd` first, then anywhere this machine recorded it.
 export function findSession(sessionId: string, cwd: string): SessionRef | null {
   if (fs.existsSync(sessionEventsPath(cwd, sessionId))) return { cwd, sessionId };

@@ -26,8 +26,8 @@ import { startMockAnthropic } from "./dev/mock-anthropic.ts";
 import { QuotaWatcher } from "./ratelimit.ts";
 import type { QuotaWarning } from "./ratelimit.ts";
 import { renderTimeline, listSessions, shortenPaths } from "./replay.ts";
-import { renderLive, newestSessionId, readSessionEvents, findWatchTarget } from "./watch.ts";
-import { recordLastSession, findSession, knownSessions } from "./home.ts";
+import { renderLive, renderOverview, newestSessionId, readSessionEvents, findWatchTarget } from "./watch.ts";
+import { recordLastSession, findSession, knownSessions, sessionRunning, type SessionRef } from "./home.ts";
 import { sessionStat, renderStats, type SessionStat } from "./stats.ts";
 import { searchSession, renderSearch, type Scope, type SessionHits } from "./search.ts";
 import { collectHarvest, renderHarvest, worthHarvesting } from "./harvest.ts";
@@ -301,6 +301,7 @@ async function cmdRun(argv: string[]): Promise<number> {
     type: "session_start",
     agent: adapter.id,
     project: cwd,
+    pid: process.pid,
     ...(guard ? { budget } : {}),
   });
   recordLastSession({ cwd, sessionId });
@@ -784,40 +785,66 @@ async function cmdWatch(argv: string[]): Promise<number> {
   };
 
   const waiting = "waiting for a session…  (start one with `vantage run claude`)";
-  let current = findWatchTarget(cwd, pinned);
-  if (!current) draw(pinned ? `no session ${pinned} here or as the last started one` : waiting);
+  // Sessions seen ended stay ended; no need to look at them again.
+  const ended = new Set<string>();
+  const key = (r: SessionRef): string => `${path.resolve(r.cwd)}|${r.sessionId}`;
+  const running = (): SessionRef[] =>
+    knownSessions(cwd).filter((r) => {
+      if (ended.has(key(r))) return false;
+      if (sessionRunning(r)) return true;
+      ended.add(key(r));
+      return false;
+    });
+
+  const detail = (ref: SessionRef): string | null => {
+    const events = readSessionEvents(ref.cwd, ref.sessionId);
+    if (events.length === 0) return null;
+    return renderLive(events, {
+      sessionId: ref.sessionId,
+      project: path.resolve(ref.cwd) === path.resolve(cwd) ? undefined : ref.cwd,
+      color: process.stdout.isTTY ?? false,
+      width: process.stdout.columns,
+    });
+  };
 
   return await new Promise<number>((resolve) => {
+    // The first tick runs right away and may already stop (a pinned session
+    // that has ended), before the interval exists.
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let stopped = false;
     const stop = (): void => {
-      clearInterval(timer);
+      stopped = true;
+      if (timer) clearInterval(timer);
       process.stdout.write("\n");
       resolve(0);
     };
     process.on("SIGINT", stop);
 
-    const timer = setInterval(() => {
-      // Without a pinned id, follow whichever session started last — here or
-      // in another directory — so watch can be opened anywhere, even before
-      // the agent is launched.
-      if (!pinned) current = findWatchTarget(cwd) ?? current;
-      if (!current) {
-        draw(waiting);
+    const tick = (): void => {
+      // A pinned session: found here or anywhere this machine recorded it;
+      // watching ends with it.
+      if (pinned) {
+        const ref = findSession(pinned, cwd);
+        if (!ref) return draw(`no session ${pinned} found — see \`vantage sessions\` or \`vantage search\``);
+        const frame = detail(ref);
+        if (frame) draw(frame);
+        if (readSessionEvents(ref.cwd, ref.sessionId).some((e) => e.type === "session_end")) stop();
         return;
       }
-      const events = readSessionEvents(current.cwd, current.sessionId);
-      if (events.length === 0) return;
-      draw(
-        renderLive(events, {
-          sessionId: current.sessionId,
-          project: path.resolve(current.cwd) === path.resolve(cwd) ? undefined : current.cwd,
-          color: process.stdout.isTTY ?? false,
-          width: process.stdout.columns,
-        })
-      );
-
-      // A pinned session that has finished has nothing more to show.
-      if (pinned && events.some((e) => e.type === "session_end")) stop();
-    }, interval);
+      // Otherwise: several running sessions side by side, one running
+      // session in detail, or the last one when none runs.
+      const live = running();
+      if (live.length >= 2) {
+        const items = live.map((ref) => ({ ref, events: readSessionEvents(ref.cwd, ref.sessionId) }));
+        return draw(renderOverview(items, { color: process.stdout.isTTY ?? false, width: process.stdout.columns }));
+      }
+      const target = live[0] ?? findWatchTarget(cwd);
+      if (!target) return draw(waiting);
+      const frame = detail(target);
+      if (frame) draw(frame);
+    };
+    tick();
+    if (!stopped) timer = setInterval(tick, interval);
   });
 }
 

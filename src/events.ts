@@ -38,6 +38,8 @@ export interface SessionEvent {
   exitCode?: number | null;
   /** session_start: the project directory. */
   project?: string;
+  /** session_start: process id of `vantage run`, to tell running from crashed. */
+  pid?: number;
   /** session_start: the budget set for this run, if any. */
   budget?: { maxCostUsd: number | null; maxQuota: number | null };
   /** session_end: files changed during the session (see git.ts). */

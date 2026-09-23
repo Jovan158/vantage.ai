@@ -94,6 +94,53 @@ interface Snapshot {
   snap: NonNullable<ReturnType<typeof extractRateLimit>>;
 }
 
+// One sentence on what Claude is doing right now, for a running session.
+export function statusSentence(events: VantageEvent[], now: number, projectPath: string | undefined, c: Colors, width: number): string {
+  const at = (e: { ts: string }): number => Date.parse(e.ts);
+  const turns = events.filter((e): e is Usage => e.type === "usage" && !e.background);
+  const lastTurn = turns.at(-1);
+  const lastRequest = events.filter((e) => e.type === "request").at(-1);
+  const lastDecision = events.filter((e) => e.type === "decision").at(-1);
+  if (
+    // Claude Code runs the hook while the reply is still streaming, so the
+    // question can predate the turn's usage record. It is open until Claude
+    // sends its next request — which happens once you have answered.
+    lastDecision?.type === "decision" &&
+    lastDecision.decision === "ask" &&
+    (!lastRequest || at(lastDecision) >= at(lastRequest))
+  ) {
+    return `${c.yellow}${c.bold}Waiting for your approval in Claude Code:${c.reset} ${fit(`${lastDecision.tool} ${relativeTarget(lastDecision.target ?? "", projectPath)}`, width - 40)}`;
+  }
+  if (lastRequest && (!lastTurn || at(lastRequest) > at(lastTurn))) {
+    return `${c.cyan}${c.bold}Claude is thinking…${c.reset} ${c.dim}${span(now - at(lastRequest))}${c.reset}`;
+  }
+  if (lastTurn?.stopReason === "tool_use") {
+    return `${c.cyan}${c.bold}Claude is working:${c.reset} ${fit(describeCalls(lastTurn, projectPath), width - 20)}`;
+  }
+  if (lastTurn) return `${c.green}${c.bold}Claude replied.${c.reset} ${c.dim}${span(now - at(lastTurn))} ago${c.reset}`;
+  return `${c.dim}Waiting for the first message…${c.reset}`;
+}
+
+type RateSnapshot = NonNullable<ReturnType<typeof extractRateLimit>>;
+
+// One bar per quota window, with the reset as clock time, plus Anthropic's
+// own warning state when it is not plain "allowed".
+export function quotaLines(snap: RateSnapshot, now: number, c: Colors): string[] {
+  const lines: string[] = [];
+  const label = (key: string): string => (key === "5h" ? "5-hour" : key === "7d" ? "weekly" : key);
+  const ordered = [...(snap.unified?.windows ?? [])].sort((a, z) => (a.key === "5h" ? -1 : z.key === "5h" ? 1 : 0));
+  for (const w of ordered) {
+    if (w.utilization == null) continue;
+    const pct = `${Math.round(w.utilization * 100)}%`.padStart(4);
+    const reset = w.resetUnix != null ? `resets ${clock(w.resetUnix * 1000, now)} (in ${span(w.resetUnix * 1000 - now)})` : "";
+    lines.push(`  ${label(w.key).padEnd(7)} ${levelColor(c, w.utilization)}${bar(w.utilization, 20)}${c.reset} ${c.bold}${pct}${c.reset}  ${c.dim}${reset}${c.reset}`);
+  }
+  const status = snap.unified?.status;
+  if (status === "rejected") lines.push(`  ${c.red}${c.bold}Limit reached — Anthropic is rejecting requests until the reset.${c.reset}`);
+  else if (status && status !== "allowed") lines.push(`  ${c.yellow}Anthropic reports you are close to your limit.${c.reset}`);
+  return lines;
+}
+
 function describeCalls(e: Usage, project: string | undefined): string {
   const calls: Array<{ tool: string; target?: string }> = e.calls ?? (e.tools ?? []).map((tool) => ({ tool }));
   return calls.map((k) => (k.target ? `${k.tool} ${relativeTarget(k.target, project)}` : k.tool)).join(", ");
@@ -114,8 +161,6 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
   const end = events.find((e) => e.type === "session_end");
   const turns = events.filter((e): e is Usage => e.type === "usage" && !e.background);
   const lastTurn = turns.at(-1);
-  const lastRequest = events.filter((e) => e.type === "request").at(-1);
-  const lastDecision = events.filter((e) => e.type === "decision").at(-1);
   const snapshots: Snapshot[] = [];
   for (const e of events) {
     if (e.type !== "ratelimit") continue;
@@ -152,27 +197,11 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
 
   // --- Status: one sentence on what is happening right now.
   lines.push("");
-  const newest = (...ts: Array<number | undefined>): number => Math.max(...ts.map((t) => t ?? -Infinity));
-  if (end) {
-    lines.push(`${c.dim}Session finished ${span(now - (endedMs ?? now))} ago — full timeline: vantage replay ${opts.sessionId}${c.reset}`);
-  } else if (
-    // Claude Code runs the hook while the reply is still streaming, so the
-    // question can predate the turn's usage record. It is open until Claude
-    // sends its next request — which happens once you have answered.
-    lastDecision?.type === "decision" &&
-    lastDecision.decision === "ask" &&
-    at(lastDecision) >= newest(lastRequest && at(lastRequest))
-  ) {
-    lines.push(`${c.yellow}${c.bold}Waiting for your approval in Claude Code:${c.reset} ${fit(`${lastDecision.tool} ${relativeTarget(lastDecision.target ?? "", projectPath)}`, width - 40)}`);
-  } else if (lastRequest && (!lastTurn || at(lastRequest) > at(lastTurn))) {
-    lines.push(`${c.cyan}${c.bold}Claude is thinking…${c.reset} ${c.dim}${span(now - at(lastRequest))}${c.reset}`);
-  } else if (lastTurn?.stopReason === "tool_use") {
-    lines.push(`${c.cyan}${c.bold}Claude is working:${c.reset} ${fit(describeCalls(lastTurn, projectPath), width - 20)}`);
-  } else if (lastTurn) {
-    lines.push(`${c.green}${c.bold}Claude replied.${c.reset} ${c.dim}${span(now - at(lastTurn))} ago${c.reset}`);
-  } else {
-    lines.push(`${c.dim}Waiting for the first message…${c.reset}`);
-  }
+  lines.push(
+    end
+      ? `${c.dim}Session finished ${span(now - (endedMs ?? now))} ago — full timeline: vantage replay ${opts.sessionId}${c.reset}`
+      : statusSentence(events, now, projectPath, c, width)
+  );
 
   // --- Secrets sent to the API: rare, and the one thing here you may have
   // to act on (rotate the key), so right under the status.
@@ -186,17 +215,7 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
   // --- Limits: will the quota hold?
   if (onSubscription) {
     section("Limits");
-    const label = (key: string): string => (key === "5h" ? "5-hour" : key === "7d" ? "weekly" : key);
-    const ordered = [...windows].sort((a, z) => (a.key === "5h" ? -1 : z.key === "5h" ? 1 : 0));
-    for (const w of ordered) {
-      if (w.utilization == null) continue;
-      const pct = `${Math.round(w.utilization * 100)}%`.padStart(4);
-      const reset = w.resetUnix != null ? `resets ${clock(w.resetUnix * 1000, now)} (in ${span(w.resetUnix * 1000 - now)})` : "";
-      lines.push(`  ${label(w.key).padEnd(7)} ${levelColor(c, w.utilization)}${bar(w.utilization, 20)}${c.reset} ${c.bold}${pct}${c.reset}  ${c.dim}${reset}${c.reset}`);
-    }
-    const status = latest?.unified?.status;
-    if (status === "rejected") lines.push(`  ${c.red}${c.bold}Limit reached — Anthropic is rejecting requests until the reset.${c.reset}`);
-    else if (status && status !== "allowed") lines.push(`  ${c.yellow}Anthropic reports you are close to your limit.${c.reset}`);
+    if (latest) lines.push(...quotaLines(latest, now, c));
 
     // Share of the 5-hour window used since this session started, and whether
     // the current pace runs it out before it resets. The windows are account-
@@ -314,6 +333,72 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
 
   lines.push("");
   lines.push(`${c.dim}${end ? "session finished" : "Ctrl-C stops watching — Claude keeps running"}${c.reset}`);
+  return lines.join("\n");
+}
+
+export interface OverviewItem {
+  ref: SessionRef;
+  events: VantageEvent[];
+}
+
+// Several sessions at once: the quota once (it is shared by the account),
+// then one block per session with what it is doing and what it cost.
+export function renderOverview(items: OverviewItem[], opts: { nowMs?: number; color?: boolean; width?: number }): string {
+  const c = opts.color === false ? noColor() : C;
+  const now = opts.nowMs ?? Date.now();
+  const width = Math.max(50, Math.min(opts.width ?? 80, 140));
+  const lines: string[] = [];
+  lines.push(`${c.bold}vantage${c.reset} ${c.dim}·${c.reset} ${c.green}${items.length} sessions running${c.reset}`);
+
+  // The newest quota reading across all sessions.
+  let latest: { ts: number; snap: RateSnapshot } | null = null;
+  for (const { events } of items) {
+    for (const e of events) {
+      if (e.type !== "ratelimit") continue;
+      const snap = extractRateLimit(e.raw);
+      const ts = Date.parse(e.ts);
+      if (snap?.unified?.windows.length && (!latest || ts > latest.ts)) latest = { ts, snap };
+    }
+  }
+  if (latest) {
+    lines.push("");
+    lines.push(`${c.bold}Limits${c.reset}${c.dim} · shared by all sessions${c.reset}`);
+    lines.push(...quotaLines(latest.snap, now, c));
+  }
+
+  const name = (item: OverviewItem): string => {
+    const start = item.events.find((e) => e.type === "session_start");
+    const project = (start?.type === "session_start" && start.project) || item.ref.cwd;
+    return project.split(/[\\/]/).filter(Boolean).at(-1) ?? project;
+  };
+  const nameWidth = Math.min(20, Math.max(...items.map((i) => name(i).length)));
+  const sorted = [...items].sort((a, z) => a.ref.sessionId.localeCompare(z.ref.sessionId));
+
+  lines.push("");
+  lines.push(`${c.bold}Sessions${c.reset}`);
+  for (const item of sorted) {
+    const start = item.events.find((e) => e.type === "session_start");
+    const project = start?.type === "session_start" ? start.project : undefined;
+    const s = summarize(item.ref.sessionId, item.events);
+    const started = start ? Date.parse(start.ts) : now;
+    const status = statusSentence(item.events, now, project, c, width - nameWidth - 10);
+    lines.push(`  ${c.bold}${fit(name(item), nameWidth).padEnd(nameWidth)}${c.reset}  ${c.dim}${span(now - started).padStart(6)}${c.reset}  ${status}`);
+    const secrets = item.events.filter((e) => e.type === "secret").length;
+    const reached = item.events.filter((e) => e.type === "budget").at(-1);
+    const facts = [
+      formatCost(s.costUsd, s.unpriced, s.requests),
+      `${s.messages} message(s)`,
+      ...(reached?.type === "budget" && reached.state === "reached" ? [`${c.red}budget reached${c.reset}${c.dim}`] : []),
+      ...(secrets ? [`${c.red}${secrets} secret(s) sent${c.reset}${c.dim}`] : []),
+    ];
+    lines.push(`  ${" ".repeat(nameWidth)}  ${" ".repeat(6)}  ${c.dim}${facts.join(" · ")}${c.reset}`);
+  }
+
+  lines.push("");
+  lines.push(`${c.dim}One session in detail:${c.reset}`);
+  for (const item of sorted) lines.push(`  ${c.dim}vantage watch ${item.ref.sessionId}   ${name(item)}${c.reset}`);
+  lines.push("");
+  lines.push(`${c.dim}Ctrl-C stops watching — Claude keeps running${c.reset}`);
   return lines.join("\n");
 }
 
