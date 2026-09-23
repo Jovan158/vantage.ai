@@ -99,6 +99,12 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
     if (line) lines.push(`  ${c.yellow}${line}${c.reset}`);
   }
 
+  // A reached budget changes how the agent runs, so it stays in view.
+  const lastBudget = [...events].reverse().find((e) => e.type === "budget");
+  if (lastBudget && lastBudget.type === "budget" && lastBudget.state === "reached") {
+    lines.push(`  ${c.red}budget reached${c.reset} ${c.dim}· ${lastBudget.reason} · actions need approval${c.reset}`);
+  }
+
   // What the agent has been doing.
   const allTools: string[] = [];
   for (const e of events) if (e.type === "usage" && e.tools) allTools.push(...e.tools);

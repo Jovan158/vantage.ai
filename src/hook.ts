@@ -15,6 +15,7 @@
 
 import { classifyTool } from "./policy.ts";
 import type { ActionType, Policy } from "./policy.ts";
+import type { BudgetState } from "./budget.ts";
 
 export interface HookInput {
   tool_name?: string;
@@ -44,9 +45,19 @@ export interface Verdict {
 // "allow" and "warn" deliberately produce no decision: warn is observe-only,
 // and emitting an explicit "allow" would override the user's own permission
 // rules — Vantage should never widen access, only narrow it.
-export function decide(toolName: string, policy: Policy): Verdict {
+//
+// A reached budget (src/budget.ts) turns those into "ask": every action then
+// needs the user's approval. deny stays deny.
+export function decide(toolName: string, policy: Policy, budget: BudgetState | null = null): Verdict {
   const type = classifyTool(toolName);
   const level = policy[type];
+  if (budget && (level === "allow" || level === "warn")) {
+    return {
+      type,
+      decision: "ask",
+      reason: `Vantage budget reached: ${budget.reason}. Approve to continue (tool: ${toolName}).`,
+    };
+  }
   switch (level) {
     case "deny":
       return {
@@ -87,11 +98,11 @@ export function parseHookInput(raw: string): HookInput | null {
 
 // Whole hook run as one pure step: raw stdin -> stdout text (or "" for no
 // decision). Unparseable input yields no decision rather than blocking work.
-export function runHook(rawInput: string, policy: Policy): string {
+export function runHook(rawInput: string, policy: Policy, budget: BudgetState | null = null): string {
   const input = parseHookInput(rawInput);
   const tool = input?.tool_name;
   if (!tool) return "";
-  const output = buildOutput(decide(tool, policy));
+  const output = buildOutput(decide(tool, policy, budget));
   return output ? JSON.stringify(output) : "";
 }
 

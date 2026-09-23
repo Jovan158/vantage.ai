@@ -16,6 +16,7 @@ const C = {
   cyan: "\x1b[36m",
   green: "\x1b[32m",
   yellow: "\x1b[33m",
+  red: "\x1b[31m",
   gray: "\x1b[90m",
 };
 
@@ -130,6 +131,13 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
         }
         break;
       }
+      case "budget":
+        lines.push(
+          e.state === "reached"
+            ? `${at} ${c.red}⛔ budget reached${c.reset} ${c.dim}· ${e.reason} · actions need approval${c.reset}`
+            : `${at} ${c.green}● budget cleared${c.reset} ${c.dim}· ${e.reason}${c.reset}`
+        );
+        break;
       case "session_end": {
         const s = summarize("", events);
         lines.push(

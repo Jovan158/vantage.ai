@@ -33,6 +33,17 @@ import type { Policy } from "./policy.ts";
 import { runHook, hookSettings, hookInvocation } from "./hook.ts";
 import { resolveCommand } from "./resolve.ts";
 import {
+  BudgetGuard,
+  budgetStatePath,
+  formatBudget,
+  hasBudget,
+  parseCost,
+  parseQuota,
+  readBudgetState,
+  type Budget,
+  type BudgetChange,
+} from "./budget.ts";
+import {
   formatCost,
   pricingHints,
   activePrices,
@@ -104,9 +115,10 @@ function warnThreshold(): number {
 
 function printHelp(): void {
   process.stdout.write(
-    `vantage — control & transparency layer for AI-coding CLIs\n\n` +
+    `vantage — see and control what Claude Code does\n\n` +
       `Usage:\n` +
-      `  vantage run [--isolate] [--no-memory] <agent> [-- <agent args...>]\n` +
+      `  vantage run [--isolate] [--no-memory] [--max-cost <usd>] [--max-quota <percent>]\n` +
+      `              <agent> [-- <agent args...>]\n` +
       `  vantage watch [sessionId]\n` +
       `  vantage sessions\n` +
       `  vantage replay <sessionId>\n` +
@@ -123,6 +135,9 @@ function printHelp(): void {
       `working tree is untouched; review or discard the changes afterwards.\n` +
       `Project memory under .vantage/memory/ is injected into the agent unless\n` +
       `--no-memory is given.\n\n` +
+      `--max-cost 2 / --max-quota 80 set a budget: once the session's estimated\n` +
+      `cost reaches $2, or a subscription quota window 80%, every action needs\n` +
+      `your approval. Also settable as VANTAGE_MAX_COST / VANTAGE_MAX_QUOTA.\n\n` +
       `VANTAGE_AGENT_PATH=<path> starts the agent from that executable instead of\n` +
       `looking it up on PATH.\n\n` +
       `Prices come from Anthropic's official list: a copy ships with vantage, and\n` +
@@ -135,14 +150,37 @@ async function cmdRun(argv: string[]): Promise<number> {
   // Leading vantage-level flags come before the agent name.
   let isolate = false;
   let useMemory = true;
+  let costRaw = process.env.VANTAGE_MAX_COST;
+  let quotaRaw = process.env.VANTAGE_MAX_QUOTA;
   const rest = [...argv];
   while (rest[0]?.startsWith("--")) {
-    const flag = rest.shift();
+    const arg = rest.shift()!;
+    const eq = arg.indexOf("=");
+    const flag = eq === -1 ? arg : arg.slice(0, eq);
+    const value = (): string | undefined => (eq === -1 ? rest.shift() : arg.slice(eq + 1));
     if (flag === "--isolate") isolate = true;
     else if (flag === "--no-isolate") isolate = false;
     else if (flag === "--no-memory") useMemory = false;
+    else if (flag === "--max-cost") costRaw = value();
+    else if (flag === "--max-quota") quotaRaw = value();
     else {
       log(`unknown flag "${flag}"`);
+      return 1;
+    }
+  }
+
+  const budget: Budget = { maxCostUsd: null, maxQuota: null };
+  if (costRaw !== undefined) {
+    budget.maxCostUsd = parseCost(costRaw);
+    if (budget.maxCostUsd === null) {
+      log(`--max-cost needs an amount in USD, e.g. --max-cost 2 (got "${costRaw}")`);
+      return 1;
+    }
+  }
+  if (quotaRaw !== undefined) {
+    budget.maxQuota = parseQuota(quotaRaw);
+    if (budget.maxQuota === null) {
+      log(`--max-quota needs a percentage, e.g. --max-quota 80 (got "${quotaRaw}")`);
       return 1;
     }
   }
@@ -171,6 +209,17 @@ async function cmdRun(argv: string[]): Promise<number> {
   const quota = new QuotaWatcher(warnThreshold());
   const effectivePolicy = loadPolicy(cwd);
   const policy = new PolicyWatcher(effectivePolicy);
+  const guard = hasBudget(budget) ? new BudgetGuard(budget, budgetStatePath(sessionDir(cwd, sessionId))) : null;
+  const onBudget = (change: BudgetChange | null, notes: string[]): void => {
+    for (const note of notes) log(`budget: ${note}`);
+    if (!change) return;
+    eventLog.append({ ts: new Date().toISOString(), type: "budget", state: change.kind, reason: change.reason });
+    if (change.kind === "reached") {
+      warn({ key: "budget", level: "critical", message: `budget reached — ${change.reason}. Every action now needs your approval.` });
+    } else {
+      log(`budget: ${change.reason} — actions run as before`);
+    }
+  };
 
   // Optional git isolation: run the agent in a dedicated worktree/branch so the
   // user's working tree is never touched (CONCEPT.md problem ④).
@@ -209,6 +258,10 @@ async function cmdRun(argv: string[]): Promise<number> {
       eventLog.append(e);
       meter.add(e);
       log(meter.statusLine());
+      if (guard) {
+        const t = meter.snapshot();
+        onBudget(guard.onCost(t.costUsd), guard.blindSpots(t.unpricedModels, null));
+      }
       const rl = meter.rateLimitLine();
       if (rl) log(rl);
       if (e.tools) {
@@ -226,6 +279,7 @@ async function cmdRun(argv: string[]): Promise<number> {
         raw: snapshot.raw,
       });
       for (const w of quota.update(snapshot)) warn(w);
+      if (guard) onBudget(guard.onQuota(snapshot), guard.blindSpots([], snapshot));
     },
   });
 
@@ -234,7 +288,7 @@ async function cmdRun(argv: string[]): Promise<number> {
   // execution. Agents without a hook mechanism stay observe-only, said plainly.
   let finalArgs = agentArgs;
   const hookEnv: Record<string, string> = {};
-  if (needsEnforcement(effectivePolicy)) {
+  if (needsEnforcement(effectivePolicy) || guard) {
     if (adapter.enforcementArgs) {
       const settingsFile = writeHookSettings(cwd, sessionId);
       finalArgs = [...adapter.enforcementArgs(settingsFile), ...finalArgs];
@@ -245,9 +299,13 @@ async function cmdRun(argv: string[]): Promise<number> {
         .filter(([, l]) => l === "ask" || l === "deny")
         .map(([t, l]) => `${t}:${l}`)
         .join(" ");
-      log(`enforcing policy via ${adapter.id} PreToolUse hook — ${enforced}`);
+      if (enforced) log(`enforcing policy via ${adapter.id} PreToolUse hook — ${enforced}`);
+      if (guard) {
+        hookEnv.VANTAGE_BUDGET_FILE = budgetStatePath(sessionDir(cwd, sessionId));
+        log(`budget: every action needs approval once ${formatBudget(budget)} is reached`);
+      }
     } else {
-      log(`policy has enforcing levels, but ${adapter.id} exposes no hook mechanism — observe-only`);
+      log(`policy or budget needs enforcement, but ${adapter.id} exposes no hook mechanism — observe-only`);
     }
   }
 
@@ -547,7 +605,11 @@ function policyToEnv(policy: Policy): string {
 async function cmdHook(): Promise<number> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  const out = runHook(Buffer.concat(chunks).toString("utf8"), loadPolicy(process.cwd()));
+  const out = runHook(
+    Buffer.concat(chunks).toString("utf8"),
+    loadPolicy(process.cwd()),
+    readBudgetState(process.env.VANTAGE_BUDGET_FILE)
+  );
   if (out) process.stdout.write(out);
   return 0; // the JSON decides; exit 0 with no JSON = no decision
 }

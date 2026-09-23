@@ -36,7 +36,14 @@ export interface RateLimitEvent {
   raw: Record<string, string>;
 }
 
-export type VantageEvent = UsageEvent | SessionEvent | RateLimitEvent;
+export interface BudgetEvent {
+  ts: string;
+  type: "budget";
+  state: "reached" | "cleared";
+  reason: string;
+}
+
+export type VantageEvent = UsageEvent | SessionEvent | RateLimitEvent | BudgetEvent;
 
 export class EventLog {
   readonly filePath: string;
