@@ -75,7 +75,7 @@ Type-Stripping zurück.
 ```bash
 # Aus dem Checkout entwickeln
 npm install          # nur TypeScript + @types/node (keine Laufzeit-Deps)
-npm test             # 56 Tests
+npm test             # 69 Tests (2 davon nur unter Windows)
 npm run typecheck    # tsc --noEmit über src + test
 npm run build        # -> dist/
 npm pack             # baut via prepack und schnürt das Tarball
@@ -100,7 +100,7 @@ vantage run claude
 ### Ausprobieren (Node ≥ 22.6, keine Installation nötig)
 
 ```bash
-npm test          # 56 Tests: Proxy-Transparenz & Resilienz, Usage (Anthropic+OpenAI),
+npm test          # 69 Tests: Proxy-Transparenz & Resilienz, Usage (Anthropic+OpenAI),
                   # Rate-Limit, Quota, Git-Isolation, Replay, Watch, Memory, Policy
 npm run demo      # komplette Kette gegen einen Mock-Upstream (kein API-Key nötig)
 
