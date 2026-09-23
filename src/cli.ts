@@ -30,6 +30,7 @@ import { renderLive, renderOverview, newestSessionId, readSessionEvents, findWat
 import { recordLastSession, findSession, knownSessions, sessionRunning, type SessionRef } from "./home.ts";
 import { sessionStat, renderStats, type SessionStat } from "./stats.ts";
 import { searchSession, renderSearch, type Scope, type SessionHits } from "./search.ts";
+import { runDoctor, renderDoctor } from "./doctor.ts";
 import { collectHarvest, renderHarvest, worthHarvesting } from "./harvest.ts";
 import { compileMemory, initMemory, addNote, memoryDir } from "./memory.ts";
 import { loadPolicy, PolicyWatcher, needsEnforcement } from "./policy.ts";
@@ -148,6 +149,7 @@ function printHelp(): void {
       `  vantage memory <init|show|add <category> <text>>\n` +
       `  vantage policy [init]\n` +
       `  vantage pricing [update|check]\n` +
+      `  vantage doctor [--no-notify]\n` +
       `  vantage demo\n` +
       `  vantage --help\n\n` +
       `Agents: ${knownAgents().join(", ")}\n\n` +
@@ -753,6 +755,12 @@ async function cmdSearch(argv: string[]): Promise<number> {
   return results.length ? 0 : 1;
 }
 
+async function cmdDoctor(argv: string[]): Promise<number> {
+  const checks = runDoctor({ cwd: process.cwd(), entry: fileURLToPath(import.meta.url), notify: !argv.includes("--no-notify") });
+  process.stdout.write(renderDoctor(checks, process.stdout.isTTY ?? false) + "\n");
+  return checks.some((c) => c.level === "fail") ? 1 : 0;
+}
+
 async function cmdSessions(): Promise<number> {
   const cwd = process.cwd();
   const sessions = listSessions(cwd);
@@ -1101,6 +1109,9 @@ async function main(): Promise<void> {
       break;
     case "search":
       process.exit(await cmdSearch(rest));
+      break;
+    case "doctor":
+      process.exit(await cmdDoctor(rest));
       break;
     case "replay":
       process.exit(await cmdReplay(rest));

@@ -46,6 +46,7 @@ npm install -g ./vantagedev-0.0.1.tgz
 ## Quick start
 
 ```bash
+vantage doctor         # check the setup once: Claude Code, hook, notifications
 vantage run claude     # start Claude Code through Vantage
 vantage watch          # live view — in a second terminal, from any directory
 vantage sessions       # list past sessions
@@ -75,6 +76,7 @@ a task that took a while, or nears a limit or budget.
 | `vantage harvest [id]` | Suggest what to remember from a session |
 | `vantage policy` · `vantage policy init` | Show the rules in effect · create a starter rule file |
 | `vantage pricing` · `vantage pricing update` | Show prices · fetch the current official list |
+| `vantage doctor [--no-notify]` | Check the setup: Claude Code, hook, git, notifications, rules, prices |
 | `vantage demo` | Run the whole chain against a mock API (no account needed) |
 
 Options for `run`:
