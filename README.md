@@ -118,6 +118,7 @@ past them.
 | `VANTAGE_MAX_COST`, `VANTAGE_MAX_QUOTA` | Budget, same as the `run` options |
 | `VANTAGE_QUOTA_WARN` | Quota warning threshold in percent (default 90) |
 | `VANTAGE_AGENT_PATH` | Path to Claude Code if it is not found on `PATH` |
+| `VANTAGE_HOME` | Where Vantage keeps its own files (default `~/.vantage`) |
 | `VANTAGE_DEBUG=1` | Log upstream status and rate-limit headers |
 
 Cost is an estimate of what the traffic would cost on the API at list price. On a
@@ -129,7 +130,12 @@ subscription, the quota line is what counts.
 proxy. The proxy forwards every request unchanged and reads token usage and
 rate-limit headers from the responses. Approval rules and budgets go through
 Claude Code's `PreToolUse` hook, because tools run inside Claude Code and never
-pass through the proxy. Each session is recorded in `.vantage/sessions/`.
+pass through the proxy.
+
+Each session is recorded in the project's `.vantage/sessions/`, including
+excerpts of prompts and replies, so add that folder to `.gitignore`.
+`vantage sessions prune` deletes old sessions. The price list and the index
+that `watch`, `stats` and `search` use across projects are kept in `~/.vantage`.
 
 More detail, with example output and design decisions (in German):
 [docs/DETAILS.md](docs/DETAILS.md) and [docs/CONCEPT.md](docs/CONCEPT.md).
