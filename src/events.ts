@@ -40,6 +40,8 @@ export interface SessionEvent {
   project?: string;
   /** session_start: the budget set for this run, if any. */
   budget?: { maxCostUsd: number | null; maxQuota: number | null };
+  /** session_end: files changed during the session (see git.ts). */
+  changes?: { files: string[]; added: number; removed: number };
 }
 
 /** A chat turn was sent; its usage event follows when the reply is done. */

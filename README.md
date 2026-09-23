@@ -15,7 +15,9 @@ Claude Code's own hooks to enforce your rules.
   commands and network access.
 - **Session replay.** Every prompt, reply and tool call as a timeline, with
   secrets redacted.
-- **Isolation.** Run in a separate git worktree and review one combined diff.
+- **Change summary.** In a git repository, every session ends with the files it
+  changed, and `vantage review` shows the diff. Or run fully isolated in a
+  separate git worktree.
 - **Project memory.** Decisions and conventions in `.vantage/memory/`, given to
   Claude Code at every start.
 
@@ -61,7 +63,8 @@ a task that took a while, or nears a limit or budget.
 | `vantage watch [id]` | Live view of the latest session, from any directory |
 | `vantage sessions` | List past sessions |
 | `vantage replay <id>` | Show a session as a timeline |
-| `vantage review <id>` · `vantage discard <id>` | Show or discard an isolated session's changes |
+| `vantage review <id> [--patch]` | Files a session changed, or the full diff |
+| `vantage discard <id>` | Discard an isolated session's worktree and branch |
 | `vantage memory init` · `add <category> <text>` · `show` | Manage project memory |
 | `vantage harvest [id]` | Suggest what to remember from a session |
 | `vantage policy` · `vantage policy init` | Show the rules in effect · create a starter rule file |

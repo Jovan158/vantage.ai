@@ -66,6 +66,9 @@ import {
   sessionDiff,
   removeSessionWorktree,
   gitSafe,
+  snapshotWorkingTree,
+  treeDiff,
+  type SessionDiff,
   type Worktree,
 } from "./git.ts";
 
@@ -78,6 +81,9 @@ interface SessionMeta {
   baseSha?: string;
   worktreePath?: string;
   createdAt: string;
+  /** Working-tree snapshots (git tree ids) at start and end, when not isolated. */
+  startTree?: string;
+  endTree?: string;
 }
 
 function writeMeta(cwd: string, meta: SessionMeta): void {
@@ -132,7 +138,7 @@ function printHelp(): void {
       `  vantage sessions\n` +
       `  vantage replay <sessionId>\n` +
       `  vantage harvest [sessionId]\n` +
-      `  vantage review <sessionId>\n` +
+      `  vantage review <sessionId> [--patch]\n` +
       `  vantage discard <sessionId>\n` +
       `  vantage memory <init|show|add <category> <text>>\n` +
       `  vantage policy [init]\n` +
@@ -257,7 +263,16 @@ async function cmdRun(argv: string[]): Promise<number> {
     log(`isolated on branch ${worktree.branch} (base ${worktree.baseSha.slice(0, 8)}) · worktree ${path.relative(cwd, worktree.path)}`);
   }
 
-  writeMeta(cwd, {
+  // Without isolation, snapshot the working tree so the end of the session
+  // can say exactly which files changed meanwhile.
+  let startTree: string | undefined;
+  if (!isolate && isGitRepo(cwd)) {
+    const snap = snapshotWorkingTree(cwd);
+    if (snap.ok) startTree = snap.tree;
+    else log(`no change summary for this session: ${snap.reason}`);
+  }
+
+  const meta: SessionMeta = {
     sessionId,
     agent: adapter.id,
     cwd,
@@ -266,7 +281,9 @@ async function cmdRun(argv: string[]): Promise<number> {
     baseSha: worktree?.baseSha,
     worktreePath: worktree?.path,
     createdAt: new Date().toISOString(),
-  });
+    ...(startTree ? { startTree } : {}),
+  };
+  writeMeta(cwd, meta);
 
   eventLog.append({
     ts: new Date().toISOString(),
@@ -458,7 +475,28 @@ async function cmdRun(argv: string[]): Promise<number> {
     child.on("exit", async (code) => {
       stopDecisionWatch();
       releaseTerminal();
-      eventLog.append({ ts: new Date().toISOString(), type: "session_end", exitCode: code });
+
+      // What changed: the isolation branch, or the working tree since start.
+      let changes: SessionDiff | null = null;
+      if (worktree) {
+        changes = reportIsolatedChanges(cwd, sessionId, worktree, adapter.id);
+      } else if (startTree) {
+        const end = snapshotWorkingTree(cwd);
+        if (end.ok) {
+          changes = treeDiff(cwd, startTree, end.tree);
+          writeMeta(cwd, { ...meta, endTree: end.tree });
+          if (changes.files.length) fs.writeFileSync(path.join(sessionDir(cwd, sessionId), "changes.patch"), changes.patch);
+        }
+      }
+
+      eventLog.append({
+        ts: new Date().toISOString(),
+        type: "session_end",
+        exitCode: code,
+        ...(changes
+          ? { changes: { files: changes.files.slice(0, 500).map((f) => f.path), added: changes.added, removed: changes.removed } }
+          : {}),
+      });
       const t = meter.snapshot();
       log(
         `session end · ${t.requests} request(s) · in ${t.input} · out ${t.output} · ` +
@@ -469,7 +507,18 @@ async function cmdRun(argv: string[]): Promise<number> {
       for (const hint of pricingHints(t.unpricedModels)) log(hint);
       log(`event log: ${eventLog.filePath}`);
 
-      if (worktree) reportIsolatedChanges(cwd, sessionId, worktree, adapter.id);
+      if (worktree && changes) {
+        printIsolatedChanges(sessionId, worktree, changes);
+      } else if (startTree && changes) {
+        if (changes.files.length === 0) {
+          log("no files changed during this session");
+        } else {
+          log(`changed during this session: ${changes.files.length} file(s), +${changes.added}/-${changes.removed} (edits you made meanwhile included)`);
+          for (const f of changes.files.slice(0, 10)) log(fmtFileLine(f));
+          if (changes.files.length > 10) log(`  … and ${changes.files.length - 10} more`);
+          log(`full diff: vantage review ${sessionId}`);
+        }
+      }
 
       // One quiet line, only when the session actually did something — memory
       // is never written automatically (see src/harvest.ts).
@@ -490,22 +539,24 @@ function fmtFileLine(f: { path: string; added: number; removed: number }): strin
 }
 
 // Commit the agent's work to the isolation branch and print an aggregated diff.
-function reportIsolatedChanges(
-  cwd: string,
-  sessionId: string,
-  worktree: Worktree,
-  agentId: string
-): void {
+// Commits the isolated session's work and returns its diff (empty when the
+// session changed nothing; the empty worktree is removed then).
+function reportIsolatedChanges(cwd: string, sessionId: string, worktree: Worktree, agentId: string): SessionDiff {
   const committed = commitSessionWork(worktree.path, `vantage: ${agentId} session ${sessionId}`);
   if (!committed) {
-    log("isolation: no changes made — removing empty worktree/branch");
     removeSessionWorktree(cwd, worktree.path, worktree.branch);
-    return;
+    return { files: [], added: 0, removed: 0, patch: "" };
   }
-
   const diff = sessionDiff(worktree.path, worktree.baseSha);
   fs.writeFileSync(path.join(sessionDir(cwd, sessionId), "changes.patch"), diff.patch);
+  return diff;
+}
 
+function printIsolatedChanges(sessionId: string, worktree: Worktree, diff: SessionDiff): void {
+  if (diff.files.length === 0) {
+    log("isolation: no changes made — removed the empty worktree/branch");
+    return;
+  }
   log(`isolation: ${diff.files.length} file(s) changed, +${diff.added}/-${diff.removed} on ${worktree.branch}`);
   for (const f of diff.files.slice(0, 10)) log(fmtFileLine(f));
   if (diff.files.length > 10) log(`  … and ${diff.files.length - 10} more`);
@@ -515,9 +566,10 @@ function reportIsolatedChanges(
 }
 
 async function cmdReview(argv: string[]): Promise<number> {
-  const sessionId = argv[0];
+  const showPatch = argv.includes("--patch") || argv.includes("-p");
+  const sessionId = argv.find((a) => !a.startsWith("-"));
   if (!sessionId) {
-    log("usage: vantage review <sessionId>");
+    log("usage: vantage review <sessionId> [--patch]");
     return 1;
   }
   const cwd = process.cwd();
@@ -526,8 +578,29 @@ async function cmdReview(argv: string[]): Promise<number> {
     log(`no session "${sessionId}" found under .vantage/sessions/`);
     return 1;
   }
-  if (!meta.isolated || !meta.branch || !meta.baseSha) {
-    log(`session ${sessionId} was not run with --isolate (nothing to review)`);
+  // Not isolated: the working-tree snapshots from start and end.
+  if (!meta.isolated) {
+    if (!meta.startTree || !meta.endTree) {
+      log(`no change record for session ${sessionId} (not a git repository, still running, or started before change tracking)`);
+      return 1;
+    }
+    const diff = treeDiff(cwd, meta.startTree, meta.endTree);
+    if (diff.files.length === 0) {
+      log(`no files changed during session ${sessionId}`);
+      return 0;
+    }
+    if (showPatch) {
+      process.stdout.write(diff.patch + "\n");
+      return 0;
+    }
+    log(`changed during session ${sessionId}: ${diff.files.length} file(s), +${diff.added}/-${diff.removed} (edits made meanwhile included)`);
+    for (const f of diff.files) process.stdout.write(fmtFileLine(f) + "\n");
+    log(`full diff: vantage review ${sessionId} --patch`);
+    log(`undo them: git diff ${meta.startTree.slice(0, 12)} ${meta.endTree.slice(0, 12)} | git apply -R`);
+    return 0;
+  }
+  if (!meta.branch || !meta.baseSha) {
+    log(`session ${sessionId} has no isolation branch recorded`);
     return 1;
   }
 
