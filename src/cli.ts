@@ -31,6 +31,7 @@ import { compileMemory, initMemory, addNote, memoryDir } from "./memory.ts";
 import { loadPolicy, PolicyWatcher, needsEnforcement } from "./policy.ts";
 import type { Policy } from "./policy.ts";
 import { runHook, hookSettings, hookInvocation } from "./hook.ts";
+import { resolveCommand } from "./resolve.ts";
 import {
   isGitRepo,
   isDirty,
@@ -247,7 +248,23 @@ async function cmdRun(argv: string[]): Promise<number> {
   log(`session ${sessionId} · agent ${adapter.id} · upstream ${upstream} (${proxy.via})`);
   log(`proxy ${proxy.url} → ${adapter.command}`);
 
-  const child = spawn(adapter.command, finalArgs, {
+  // A launch that never gets going must still end its session — otherwise
+  // `watch` shows it as running forever — and must not leave an empty
+  // isolation worktree behind.
+  const failLaunch = async (reason: string): Promise<number> => {
+    log(`could not launch ${adapter.command}: ${reason}`);
+    eventLog.append({ ts: new Date().toISOString(), type: "session_end", exitCode: 127 });
+    if (worktree) removeSessionWorktree(cwd, worktree.path, worktree.branch);
+    await proxy.close();
+    return 127;
+  };
+
+  // Windows cannot spawn npm's `claude.cmd` shims without a shell; resolve to
+  // node + the shim's script instead (see src/resolve.ts).
+  const target = resolveCommand(adapter.command);
+  if (!target.ok) return await failLaunch(target.reason);
+
+  const child = spawn(target.resolved.command, [...target.resolved.prefix, ...finalArgs], {
     cwd: childCwd,
     stdio: "inherit",
     env: { ...process.env, ...adapter.proxyEnv(proxy.url), ...hookEnv },
@@ -259,12 +276,8 @@ async function cmdRun(argv: string[]): Promise<number> {
 
   return await new Promise<number>((resolve) => {
     child.on("error", (err: NodeJS.ErrnoException) => {
-      if (err.code === "ENOENT") {
-        log(`could not launch "${adapter.command}" — is it installed and on PATH?`);
-      } else {
-        log(`failed to launch agent: ${err.message}`);
-      }
-      void proxy.close().then(() => resolve(127));
+      const reason = err.code === "ENOENT" ? "not found — is it installed and on PATH?" : err.message;
+      void failLaunch(reason).then(resolve);
     });
     child.on("exit", async (code) => {
       eventLog.append({ ts: new Date().toISOString(), type: "session_end", exitCode: code });
