@@ -83,6 +83,20 @@ npm pack             # baut via prepack und schnürt das Tarball
 
 **Null Laufzeit-Abhängigkeiten** — alles läuft auf Node-Bordmitteln.
 
+**Wie Vantage den Agent findet.** Vantage bringt keinen eigenen Agent und keinen
+API-Key mit — es startet *deinen* installierten Claude Code, der sich mit seinem
+eigenen Login (Abo oder `ANTHROPIC_API_KEY`) anmeldet; Vantage reicht das nur
+durch. Gesucht wird `claude` auf dem PATH. Unter Windows installiert npm Agents als
+`claude.cmd`-Hilfsdatei, die Node nicht ohne Shell starten kann; Vantage liest aus
+ihr, was sie aufruft (die native `claude.exe` aktueller Versionen oder ein
+JS-Skript), und startet das direkt — ohne Shell, damit Prompt und Memory-Text nicht
+von cmd.exe interpretiert werden. Liegt der Agent woanders:
+
+```powershell
+$env:VANTAGE_AGENT_PATH = "C:\pfad\zu\claude.exe"
+vantage run claude
+```
+
 ### Ausprobieren (Node ≥ 22.6, keine Installation nötig)
 
 ```bash

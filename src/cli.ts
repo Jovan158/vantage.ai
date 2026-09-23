@@ -111,7 +111,9 @@ function printHelp(): void {
       `--isolate runs the agent in a dedicated git worktree/branch so your\n` +
       `working tree is untouched; review or discard the changes afterwards.\n` +
       `Project memory under .vantage/memory/ is injected into the agent unless\n` +
-      `--no-memory is given.\n`
+      `--no-memory is given.\n\n` +
+      `VANTAGE_AGENT_PATH=<path> starts the agent from that executable instead of\n` +
+      `looking it up on PATH.\n`
   );
 }
 
@@ -259,10 +261,24 @@ async function cmdRun(argv: string[]): Promise<number> {
     return 127;
   };
 
+  // VANTAGE_AGENT_PATH names the agent's executable outright, for installs the
+  // automatic lookup gets wrong. It still goes through the resolver, so a path
+  // to an npm `.cmd` shim works as well as one to the `.exe` itself.
+  const override = process.env.VANTAGE_AGENT_PATH;
+  if (override) {
+    if (!fs.existsSync(override)) {
+      return await failLaunch(`VANTAGE_AGENT_PATH points at ${override}, which does not exist`);
+    }
+    log(`agent from VANTAGE_AGENT_PATH: ${override}`);
+  }
+
   // Windows cannot spawn npm's `claude.cmd` shims without a shell; resolve to
-  // node + the shim's script instead (see src/resolve.ts).
-  const target = resolveCommand(adapter.command);
-  if (!target.ok) return await failLaunch(target.reason);
+  // what the shim wraps instead (see src/resolve.ts).
+  const target = resolveCommand(override || adapter.command);
+  if (!target.ok) {
+    const hint = override ? "" : " — or set VANTAGE_AGENT_PATH to the agent's executable";
+    return await failLaunch(target.reason + hint);
+  }
 
   const child = spawn(target.resolved.command, [...target.resolved.prefix, ...finalArgs], {
     cwd: childCwd,
@@ -276,7 +292,10 @@ async function cmdRun(argv: string[]): Promise<number> {
 
   return await new Promise<number>((resolve) => {
     child.on("error", (err: NodeJS.ErrnoException) => {
-      const reason = err.code === "ENOENT" ? "not found — is it installed and on PATH?" : err.message;
+      const reason =
+        err.code === "ENOENT"
+          ? "not found — is it installed and on PATH? (or set VANTAGE_AGENT_PATH to its executable)"
+          : err.message;
       void failLaunch(reason).then(resolve);
     });
     child.on("exit", async (code) => {

@@ -29,6 +29,19 @@ IF EXIST "%dp0%\\node.exe" (
 endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*
 `;
 
+// What current npm writes when the bin is a native binary — current Claude
+// Code (2.1.x) ships bin/claude.exe. Generated with npm's own cmd-shim module.
+const EXE_SHIM = `@ECHO off
+GOTO start
+:find_dp0
+SET dp0=%~dp0
+EXIT /b
+:start
+SETLOCAL
+CALL :find_dp0
+"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"   %*
+`;
+
 // Older npm versions used %~dp0 directly.
 const LEGACY_SHIM = `@IF EXIST "%~dp0\\node.exe" (
   "%~dp0\\node.exe"  "%~dp0\\node_modules\\agent\\bin\\agent.mjs" %*
@@ -36,10 +49,23 @@ const LEGACY_SHIM = `@IF EXIST "%~dp0\\node.exe" (
   node  "%~dp0\\node_modules\\agent\\bin\\agent.mjs" %*
 )`;
 
-test("parses the script out of modern and legacy npm shims", () => {
-  assert.equal(parseNpmCmdShim(MODERN_SHIM), "node_modules\\@anthropic-ai\\claude-code\\cli.js");
-  assert.equal(parseNpmCmdShim(LEGACY_SHIM), "node_modules\\agent\\bin\\agent.mjs");
+test("parses the target out of node-script, native-exe and legacy npm shims", () => {
+  assert.deepEqual(parseNpmCmdShim(MODERN_SHIM), {
+    kind: "node",
+    rel: "node_modules\\@anthropic-ai\\claude-code\\cli.js",
+  });
+  assert.deepEqual(parseNpmCmdShim(EXE_SHIM), {
+    kind: "exe",
+    rel: "node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe",
+  });
+  assert.deepEqual(parseNpmCmdShim(LEGACY_SHIM), { kind: "node", rel: "node_modules\\agent\\bin\\agent.mjs" });
   assert.equal(parseNpmCmdShim("@echo off\r\nsome-native-tool.exe %*"), null);
+});
+
+test("the node-script shim's IF EXIST node.exe check is not mistaken for the target", () => {
+  // MODERN_SHIM contains "%dp0%\\node.exe" — only the path before %* counts.
+  assert.equal(parseNpmCmdShim(MODERN_SHIM)?.kind, "node");
+  assert.doesNotMatch(parseNpmCmdShim(MODERN_SHIM)!.rel, /node\.exe$/);
 });
 
 test("non-Windows platforms pass the command through unchanged", () => {
@@ -73,6 +99,19 @@ test("an npm .cmd shim becomes node + its script, no shell", () => {
   assert.ok(r.ok);
   assert.equal(r.resolved.command, "C:\\node\\node.exe");
   assert.deepEqual(r.resolved.prefix, [script]);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("an npm shim around a native exe starts that exe directly", () => {
+  const { dir, env } = sandbox();
+  fs.writeFileSync(path.join(dir, "claude.cmd"), EXE_SHIM);
+  const exe = path.join(dir, "node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe");
+  fs.mkdirSync(path.dirname(exe), { recursive: true });
+  fs.writeFileSync(exe, "");
+  const r = resolveCommand("claude", { platform: "win32", env });
+  assert.ok(r.ok);
+  assert.equal(r.resolved.command, exe);
+  assert.deepEqual(r.resolved.prefix, [], "no node in front of a native exe");
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -112,6 +151,37 @@ test("on Windows, a shimmed agent starts and receives arguments untouched", { sk
 
   const tricky = 'say "hi" & echo pwned | more %PATH% ^caret';
   const out = spawnSync(r.resolved.command, [...r.resolved.prefix, "-p", tricky], { encoding: "utf8" });
+  assert.equal(out.status, 0, out.stderr);
+  assert.deepEqual(JSON.parse(out.stdout), ["-p", tricky]);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Real Windows only, native-exe shape (what current Claude Code installs): the
+// shim wraps an .exe. We use a link to node.exe as that .exe, resolve through
+// the shim, and check arguments with cmd.exe metacharacters arrive untouched.
+test("on Windows, an exe-shimmed agent starts and receives arguments untouched", { skip: process.platform !== "win32" }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vantage-exe-shim-"));
+  const exe = path.join(dir, "node_modules", "fake-exe", "bin", "fake-exe.exe");
+  fs.mkdirSync(path.dirname(exe), { recursive: true });
+  try {
+    fs.linkSync(process.execPath, exe);
+  } catch {
+    fs.copyFileSync(process.execPath, exe);
+  }
+  fs.writeFileSync(
+    path.join(dir, "fake-exe.cmd"),
+    EXE_SHIM.replace("node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe", "node_modules\\fake-exe\\bin\\fake-exe.exe")
+  );
+  const printer = path.join(dir, "print-args.js");
+  fs.writeFileSync(printer, "process.stdout.write(JSON.stringify(process.argv.slice(2)));");
+
+  const r = resolveCommand("fake-exe", { env: { ...process.env, PATH: `${dir};${process.env.PATH ?? ""}` } });
+  assert.ok(r.ok, r.ok ? "" : r.reason);
+  assert.equal(r.resolved.command.toLowerCase(), exe.toLowerCase());
+  assert.deepEqual(r.resolved.prefix, []);
+
+  const tricky = 'say "hi" & echo pwned | more %PATH% ^caret';
+  const out = spawnSync(r.resolved.command, [printer, "-p", tricky], { encoding: "utf8" });
   assert.equal(out.status, 0, out.stderr);
   assert.deepEqual(JSON.parse(out.stdout), ["-p", tricky]);
   fs.rmSync(dir, { recursive: true, force: true });
