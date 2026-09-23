@@ -143,7 +143,7 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
       ? `${c.gray}ended${end.exitCode != null ? ` (exit ${end.exitCode})` : ""}${c.reset}`
       : `${c.green}running${c.reset}`;
   lines.push(
-    `${end ? c.gray : c.green}●${c.reset} ${c.bold}vantage${c.reset} ${c.dim}·${c.reset} ${state} ` +
+    `${c.bold}vantage${c.reset} ${c.dim}·${c.reset} ${state} ` +
       `${c.dim}· ${span((endedMs ?? now) - startedMs)}` +
       `${lastTurn?.model ? ` · ${lastTurn.model}` : ""}${projectName ? ` · ${fit(projectName, 40)}` : ""}${c.reset}`
   );
@@ -168,7 +168,7 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
   } else if (lastTurn?.stopReason === "tool_use") {
     lines.push(`${c.cyan}${c.bold}Claude is working:${c.reset} ${fit(describeCalls(lastTurn, projectPath), width - 20)}`);
   } else if (lastTurn) {
-    lines.push(`${c.green}${c.bold}Claude replied — your turn.${c.reset} ${c.dim}${span(now - at(lastTurn))} ago${c.reset}`);
+    lines.push(`${c.green}${c.bold}Claude replied.${c.reset} ${c.dim}${span(now - at(lastTurn))} ago${c.reset}`);
   } else {
     lines.push(`${c.dim}Waiting for the first message…${c.reset}`);
   }
@@ -185,8 +185,8 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
       lines.push(`  ${label(w.key).padEnd(7)} ${levelColor(c, w.utilization)}${bar(w.utilization, 20)}${c.reset} ${c.bold}${pct}${c.reset}  ${c.dim}${reset}${c.reset}`);
     }
     const status = latest?.unified?.status;
-    if (status === "rejected") lines.push(`  ${c.red}${c.bold}⛔ Limit reached — Anthropic is rejecting requests until the reset.${c.reset}`);
-    else if (status && status !== "allowed") lines.push(`  ${c.yellow}⚠ Anthropic reports you are close to your limit.${c.reset}`);
+    if (status === "rejected") lines.push(`  ${c.red}${c.bold}Limit reached — Anthropic is rejecting requests until the reset.${c.reset}`);
+    else if (status && status !== "allowed") lines.push(`  ${c.yellow}Anthropic reports you are close to your limit.${c.reset}`);
 
     // Share of the 5-hour window used since this session started, and whether
     // the current pace runs it out before it resets. The windows are account-

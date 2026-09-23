@@ -54,6 +54,7 @@ test("summarize totals usage across turns", () => {
 
 test("renderTimeline shows turns, quota, and end summary (no color)", () => {
   const out = renderTimeline(events, false);
+  assert.doesNotMatch(out, /[●◔▸⛔⚠✔✓]/u, "words, not symbols");
   assert.match(out, /session start/);
   assert.match(out, /turn 1 claude-sonnet-5/);
   assert.match(out, /out 130/);

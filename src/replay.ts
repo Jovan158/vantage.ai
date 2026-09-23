@@ -120,7 +120,7 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
     const at = `${c.gray}${relTime(startMs, Date.parse(e.ts)).padStart(6)}${c.reset}`;
     switch (e.type) {
       case "session_start":
-        lines.push(`${c.bold}● session start${c.reset} ${c.dim}· agent ${e.agent ?? "?"}${c.reset}`);
+        lines.push(`${c.bold}session start${c.reset} ${c.dim}· agent ${e.agent ?? "?"}${c.reset}`);
         break;
       case "usage": {
         const model = e.model ?? "?";
@@ -135,7 +135,7 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
         }
         step += 1;
         lines.push(
-          `${at} ${c.cyan}▸ turn ${step}${c.reset} ${c.dim}${model}${c.reset} · ` +
+          `${at} ${c.cyan}turn ${step}${c.reset} ${c.dim}${model}${c.reset} · ` +
             `in ${fmtTokens(e.in)} · out ${c.green}${fmtTokens(e.out)}${c.reset} · ` +
             `cache ${fmtTokens(e.cache_read)}${e.cache_write ? `r/${fmtTokens(e.cache_write)}w` : ""} · ${cost}`
         );
@@ -155,28 +155,28 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
         const snap = extractRateLimit(e.raw);
         const line = snap ? formatRateLimit(snap, Date.parse(e.ts)) : null;
         if (line && line !== lastQuota) {
-          lines.push(`${at} ${c.yellow}◔ ${line}${c.reset}`);
+          lines.push(`${at} ${c.yellow}${line}${c.reset}`);
           lastQuota = line;
         }
         break;
       }
       case "decision":
         lines.push(
-          `${at} ${e.decision === "deny" ? `${c.red}⛔ blocked` : `${c.yellow}? asked you about`}${c.reset} ` +
+          `${at} ${e.decision === "deny" ? `${c.red}blocked` : `${c.yellow}asked you about`}${c.reset} ` +
             `${e.tool}${e.target ? ` ${relativeTarget(e.target, project)}` : ""} ${c.dim}· ${e.reason}${c.reset}`
         );
         break;
       case "budget":
         lines.push(
           e.state === "reached"
-            ? `${at} ${c.red}⛔ budget reached${c.reset} ${c.dim}· ${e.reason} · actions need approval${c.reset}`
-            : `${at} ${c.green}● budget cleared${c.reset} ${c.dim}· ${e.reason}${c.reset}`
+            ? `${at} ${c.red}budget reached${c.reset} ${c.dim}· ${e.reason} · actions need approval${c.reset}`
+            : `${at} ${c.green}budget cleared${c.reset} ${c.dim}· ${e.reason}${c.reset}`
         );
         break;
       case "session_end": {
         const s = summarize("", events);
         lines.push(
-          `${at} ${c.bold}● session end${c.reset} ${c.dim}· ${s.turns} turn(s) · ` +
+          `${at} ${c.bold}session end${c.reset} ${c.dim}· ${s.turns} turn(s) · ` +
             `in ${fmtTokens(s.input)} · out ${fmtTokens(s.output)} · ` +
             `cache ${fmtTokens(s.cacheRead)}r/${fmtTokens(s.cacheWrite)}w · ` +
             formatCost(s.costUsd, s.unpriced, s.requests) +

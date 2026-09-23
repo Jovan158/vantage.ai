@@ -105,8 +105,8 @@ function log(msg: string): void {
 
 function warn(w: QuotaWarning): void {
   const color = w.level === "critical" ? "\x1b[1;31m" : "\x1b[1;33m"; // red / yellow
-  const icon = w.level === "critical" ? "⛔" : "⚠";
-  terminal.alert(`${color}[vantage] ${icon}  ${w.message}\x1b[0m\n`);
+  const label = w.level === "critical" ? "ALERT" : "warning";
+  terminal.alert(`${color}[vantage] ${label}: ${w.message}\x1b[0m\n`);
 }
 
 // Warn threshold as a fraction 0..1. VANTAGE_QUOTA_WARN accepts a fraction
@@ -671,9 +671,8 @@ async function cmdPolicy(): Promise<number> {
   const policy = loadPolicy(cwd);
   log("action-type policy — allow · warn (notice only) · ask (approval) · deny (blocked):");
   for (const [type, level] of Object.entries(policy)) {
-    const mark =
-      level === "deny" ? "\x1b[31m⛔\x1b[0m" : level === "ask" ? "\x1b[33m?\x1b[0m" : level === "warn" ? "\x1b[33m⚠\x1b[0m" : " ";
-    process.stdout.write(`  ${mark} ${type.padEnd(8)} ${level}\n`);
+    const color = level === "deny" ? "\x1b[31m" : level === "ask" || level === "warn" ? "\x1b[33m" : "";
+    process.stdout.write(`  ${type.padEnd(8)} ${color}${level}\x1b[0m\n`);
   }
   if (needsEnforcement(policy)) {
     log("ask/deny are enforced through the agent's PreToolUse hook (agents without hooks stay observe-only)");

@@ -44,18 +44,19 @@ const running: VantageEvent[] = [
 
 test("live view: status, limits with reset, session numbers, latest exchange, activity", () => {
   const out = renderLive(running, { sessionId: "sess-1", nowMs: NOW, color: false });
-  assert.match(out, /● vantage · running · 30s · claude-sonnet-5/);
+  assert.match(out, /vantage · running · 30s · claude-sonnet-5/);
   assert.match(out, /sess-1/);
-  assert.match(out, /Claude replied — your turn\. 27s ago/);
+  assert.match(out, /Claude replied\. 27s ago/);
   assert.match(out, /5-hour\s+█{8}░{12}\s+42%\s+resets \d\d:\d\d \(in 2h\)/);
   assert.match(out, /1 message\(s\) from you\s+→\s+1 model call\(s\), 2 tool call\(s\)/);
-  assert.match(out, /~\$0\.0310 \(est\.\)\s+API-equivalent/);
+  assert.match(out, /~\$0\.0310 \(estimated\)\s+API-equivalent/);
   assert.match(out, /context\s+52k tokens sent with the last message/);
   assert.match(out, /you\s+add a retry to the fetch helper/);
   assert.match(out, /claude\s+I'll add exponential backoff\./);
   assert.match(out, /Activity · read×1 · write×1/);
   assert.match(out, /Ctrl-C stops watching — Claude keeps running/);
   assert.doesNotMatch(out, /\x1b\[/, "no ANSI when color is off");
+  assert.doesNotMatch(out, /[●◔▸⛔⚠✔✓]/u, "words, not symbols");
 });
 
 test("live view reports a finished session with its exit code", () => {

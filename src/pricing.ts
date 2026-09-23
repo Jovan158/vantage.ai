@@ -206,8 +206,8 @@ export function estimateCostUsd(usage: TokenUsage): number | null {
 export function formatCost(knownUsd: number, unpriced: number, requests: number): string {
   if (requests > 0 && unpriced >= requests) return "cost n/a (price unknown)";
   const base = `~$${knownUsd.toFixed(4)}`;
-  if (unpriced > 0) return `${base} (est., ${unpriced} request(s) unpriced)`;
-  return `${base} (est.)`;
+  if (unpriced > 0) return `${base} (estimated, ${unpriced} request(s) unpriced)`;
+  return `${base} (estimated)`;
 }
 
 // ---------------------------------------------------------------------------

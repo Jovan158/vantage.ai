@@ -52,7 +52,7 @@ test("cost budget trips once and stays tripped", () => {
   assert.equal(readBudgetState(file), null);
   const change = g.onCost(1.02);
   assert.equal(change?.kind, "reached");
-  assert.match(change!.reason, /~\$1\.02 \(est\.\) reached the \$1\.00 budget/);
+  assert.match(change!.reason, /~\$1\.02 \(estimated\) reached the \$1\.00 budget/);
   assert.match(readBudgetState(file)!.reason, /\$1\.00 budget/);
   assert.equal(g.onCost(3), null, "no repeated alarm");
 });
@@ -94,7 +94,7 @@ test("blind spots are said once: unpriced models and accounts without quota wind
 });
 
 test("while the budget is reached, every action needs approval; deny stays deny", () => {
-  const reached = { reason: "session cost ~$2.01 (est.) reached the $2.00 budget", since: "" };
+  const reached = { reason: "session cost ~$2.01 (estimated) reached the $2.00 budget", since: "" };
   const write = decide("Write", DEFAULT_POLICY, reached);
   assert.equal(write.decision, "ask");
   assert.match(write.reason, /budget reached: session cost/);
@@ -172,7 +172,7 @@ test("`vantage run --max-cost`: the request that crosses the budget makes the ne
   // The mock request costs ~$0.003 at Sonnet 5 prices.
   const over = await vantageRun(dir, ["--max-cost", "0.001"], env);
   assert.equal(over.code, 0, over.err);
-  assert.match(over.err, /budget reached — session cost ~\$0\.0030 \(est\.\) reached the \$0\.0010 budget/);
+  assert.match(over.err, /budget reached — session cost ~\$0\.0030 \(estimated\) reached the \$0\.0010 budget/);
   const answer = JSON.parse(/HOOK:(.*)/.exec(over.out)![1]!);
   assert.equal(answer.hookSpecificOutput.permissionDecision, "ask");
   assert.match(answer.hookSpecificOutput.permissionDecisionReason, /Vantage budget reached/);

@@ -13,7 +13,7 @@ der beobachteten Kopie und Metering von Streaming- *und* JSON-Antworten. Zusätz
 liest der Proxy die **Rate-Limit-Header** aus und zeigt eine echte Limit-Prognose:
 
 ```
-[vantage] session end · 2 request(s) · in 66 · out 45 · cache 66414 · ~$0.0208 (est.)
+[vantage] session end · 2 request(s) · in 66 · out 45 · cache 66414 · ~$0.0208 (estimated)
 [vantage] quota 5h 53% used reset 1h50m · 7d 6% used reset 156h50m
 ```
 
@@ -59,7 +59,7 @@ der Schwelle (kein Spam), re-armiert nach Reset, und meldet akute Fälle
 (`rejected`, `retry-after`) sofort:
 
 ```
-[vantage] ⚠  Quota 5h zu 92% verbraucht — nähert sich dem Limit (reset 18m)
+[vantage] warning: Quota 5h zu 92% verbraucht — nähert sich dem Limit (reset 18m)
 ```
 
 Schwelle konfigurierbar über `VANTAGE_QUOTA_WARN` (Prozent `80` oder Anteil `0.8`,
@@ -84,7 +84,7 @@ aus der Policy bleibt `deny`. Ein Kosten-Budget bleibt für die Session erreicht
 zurückgesetzt ist.
 
 ```
-[vantage] ⛔  budget reached — session cost ~$2.03 (est.) reached the $2.00 budget. Every action now needs your approval.
+[vantage] ALERT: budget reached — session cost ~$2.03 (estimated) reached the $2.00 budget. Every action now needs your approval.
 ```
 
 Umsetzung: Der Hook ist bei Claude Code ein eigener Prozess pro Tool-Aufruf und
@@ -103,7 +103,7 @@ klassifiziert jeden Tool-Call nach Typ — **read / write / shell / network / ot
 eine Warnung, wenn ein als `warn` markierter Typ genutzt wird:
 
 ```
-[vantage] ⚠  policy: shell action used (Bash) — policy 'warn' (observe-only, not blocked)
+[vantage] warning: policy: shell action used (Bash) — policy 'warn' (observe-only, not blocked)
 …
 actions: write×1 · shell×1
 ```
@@ -146,7 +146,7 @@ man mitten in der Arbeit hat: Was macht Claude gerade? Reicht mein Limit? Woran
 hat Claude gearbeitet? Was kostet das?
 
 ```
-● vantage · running · 3m · claude-opus-5-5 · vantage.dev
+vantage · running · 3m · claude-opus-5-5 · vantage.dev
 2026-09-23T12-00-00-000Z_ab12
 
 Waiting for your approval in Claude Code: Bash npm test
@@ -159,7 +159,7 @@ Limits
 
 This session
   work     1 message(s) from you  →  3 model call(s), 4 tool call(s)
-  cost     ~$0.2000 (est.)  API-equivalent; on your subscription the limits above count
+  cost     ~$0.2000 (estimated)  API-equivalent; on your subscription the limits above count
   budget   █░░░░░░░░░ 10% of $2
   context  64k tokens sent with the last message  ·  90% of all input came from cache
 
@@ -176,7 +176,7 @@ Activity · read×2 · write×1 · shell×1 · 1 file(s) edited
 
 - **Status:** „Claude is thinking…“ (Anfrage läuft), „Claude is working: Edit
   src/app.ts“ (führt Tools aus), „Waiting for your approval“ (eine `ask`-Regel
-  oder ein Budget hat eine Rückfrage ausgelöst), „Claude replied — your turn“.
+  oder ein Budget hat eine Rückfrage ausgelöst), „Claude replied“.
 - **Limits:** Balken grün/gelb/rot, Reset als Uhrzeit, der Anteil dieser Session
   und eine Prognose: Reicht das aktuelle Tempo bis zum Reset? Die Fenster gelten
   fürs ganze Konto, andere Claude-Nutzung zählt also mit.
@@ -210,14 +210,14 @@ lesbare Timeline — jeder Turn mit Modell/Tokens/Kosten **und Inhalt** (letzter
 Prompt, Antworttext, aufgerufene Tools), Quota-Verlauf und Zusammenfassung:
 
 ```
-● session start · agent claude-code
- +2.1s ◔ quota 5h 76% used reset 1h35m · 7d 9% used
- +3.4s ▸ turn 1 claude-sonnet-5 · in 2 · out 147 · cache 55k · $0.0385
+session start · agent claude-code
+ +2.1s quota 5h 76% used reset 1h35m · 7d 9% used
+ +3.4s turn 1 claude-sonnet-5 · in 2 · out 147 · cache 55k · $0.0385
          prompt: Create a file poem.txt with a two-line poem about the sea
          tools:  Write
- +4.3s ▸ turn 2 claude-sonnet-5 · in 2 · out 21 · cache 61k · $0.0193
+ +4.3s turn 2 claude-sonnet-5 · in 2 · out 21 · cache 61k · $0.0193
          reply:  Created poem.txt with a two-line poem about the sea.
- +6.0s ● session end · 3 turn(s) · in 98 · out 232 · cache 122k · ~$0.0609 (est.) · exit 0
+ +6.0s session end · 3 turn(s) · in 98 · out 232 · cache 122k · ~$0.0609 (estimated) · exit 0
 ```
 
 So sieht man, **was** der Agent über mehrere Schritte vorhatte. Prompt-/Antwort-
@@ -263,7 +263,7 @@ das Material auf und schlägt einen fertigen Befehl vor:
 
 ```
 harvest · session 2026-09-18T11-31-28-722Z_0k4i
-3 turn(s) · ~$0.0604 (est.) · write×1
+3 turn(s) · ~$0.0604 (estimated) · write×1
 
   what the agent said it did
     Created notes.txt containing "HARVEST".

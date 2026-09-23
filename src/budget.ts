@@ -57,7 +57,7 @@ function usd(n: number): string {
 
 export function formatBudget(b: Budget): string {
   const parts: string[] = [];
-  if (b.maxCostUsd !== null) parts.push(`est. cost ~${usd(b.maxCostUsd)}`);
+  if (b.maxCostUsd !== null) parts.push(`estimated cost ~${usd(b.maxCostUsd)}`);
   if (b.maxQuota !== null) parts.push(`${Math.round(b.maxQuota * 100)}% of a quota window`);
   return parts.join(" or ");
 }
@@ -112,7 +112,7 @@ export class BudgetGuard {
   onCost(knownUsd: number): BudgetChange | null {
     const max = this.budget.maxCostUsd;
     if (max === null || this.costReason !== null || knownUsd < max) return null;
-    return this.set(() => (this.costReason = `session cost ~${usd(knownUsd)} (est.) reached the ${usd(max)} budget`));
+    return this.set(() => (this.costReason = `session cost ~${usd(knownUsd)} (estimated) reached the ${usd(max)} budget`));
   }
 
   onQuota(s: RateLimitSnapshot): BudgetChange | null {
