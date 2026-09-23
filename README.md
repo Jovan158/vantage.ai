@@ -1,35 +1,30 @@
-<img width="1408" height="768" alt="vantage dev_schriftzug" src="https://github.com/user-attachments/assets/13b85a02-08a3-4ea0-813c-44c4c14bbe23" />
+<p align="center">
+<img width="65%" height="768" alt="vantage dev_schriftzug" src="https://github.com/user-attachments/assets/13b85a02-08a3-4ea0-813c-44c4c14bbe23" />
+</p>
 
-# vantage.dev
+## See and control what your AI does
 
-**See and control what Claude Code does: cost, limits, actions and history.**
 
-Vantage wraps [Claude Code](https://code.claude.com/docs) without
-changing it. It sits between Claude Code and the API as a local proxy and uses
-Claude Code's own hooks to enforce your rules.
+Vantage wraps AI coding agents without changing them. It sits between your coding agent and the API as a local proxy and uses the agent's own hooks and configuration mechanisms to enforce your rules.
+
+Currently we **only** support **Claude Code**.
 
 - **Cost and limits, live.** Tokens, estimated cost at official list prices, and
-  your subscription's 5-hour and 7-day quota, with a warning before you hit it.
+  your subscription's quota, with a warning before you hit it.
 - **Budgets.** Past a cost or quota limit you set, every action needs your approval.
 - **Approvals by action type, file and command.** Allow, warn, ask or deny file
   reads, writes, shell commands and network access, or specific files and
-  commands such as `.env` or `git push --force`.
+  commands.
 - **Secret warnings.** When something that looks like an API key, private key or
-  password is sent to the API — say, after Claude read a `.env` file — Vantage
-  tells you what it was and where it came from.
-- **Session replay and stats.** Every prompt, reply and tool call as a timeline,
-  with secrets redacted, and usage over days and projects.
+  password is sent to the API, Vantage tells you what it was and where it came from.
+- **Session replay and stats.** Every prompt, reply and tool call as a timeline
+  with usage over days and projects.
 - **Change summary.** In a git repository, every session ends with the files it
   changed, and `vantage review` shows the diff. Or run fully isolated in a
   separate git worktree.
 - **Project memory.** Decisions and conventions in `.vantage/memory/`, given to
-  Claude Code at every start.
+  the AI coding agent at every start.
 
-## Requirements
-
-- Node.js 22.6 or newer
-- Claude Code, installed and logged in (subscription or API key). Vantage uses
-  that login and needs no key of its own.
 
 ## Install
 
@@ -48,7 +43,7 @@ npm install -g ./vantagedev-0.0.1.tgz
 ```bash
 vantage doctor         # check the setup once: Claude Code, hook, git
 vantage run claude     # start Claude Code through Vantage
-vantage watch          # live view — in a second terminal, from any directory
+vantage watch          # live view in a second terminal, from any directory
 vantage sessions       # list past sessions
 vantage replay <id>    # replay one as a timeline
 ```
@@ -137,18 +132,6 @@ excerpts of prompts and replies. Vantage keeps it out of git with its own
 `.vantage/.gitignore`, so rules and project memory can still be committed.
 `vantage sessions prune` deletes old sessions. The price list and the index
 that `watch`, `stats` and `search` use across projects are kept in `~/.vantage`.
-
-More detail, with example output and design decisions (in German):
-[docs/DETAILS.md](docs/DETAILS.md) and [docs/CONCEPT.md](docs/CONCEPT.md).
-
-## Development
-
-```bash
-npm install
-npm test
-npm run typecheck
-npm run build
-```
 
 ## License
 
