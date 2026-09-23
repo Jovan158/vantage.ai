@@ -162,6 +162,15 @@ rendern"), die die UI des gewrappten Tools zerstören kann. Die Live-Ansicht lä
 deshalb in einem eigenen Terminal/tmux-Pane, gespeist aus dem append-only
 Event-Log: **null Risiko für das Agent-Terminal, null Abhängigkeiten.**
 
+Konsequent zu Ende gedacht heißt das: Solange die Chat-Oberfläche von Claude Code
+offen ist, schreibt `vantage run` **gar nichts** in dieses Terminal. Eine frühere
+Version gab nach jeder Antwort eine Statuszeile aus; die landete irgendwo in der
+Oberfläche, verdeckte das Eingabefeld und verschwand beim nächsten Neuzeichnen.
+Jetzt entfallen Routinezeilen (sie stehen in `vantage watch`), und Warnungen —
+Quota, Budget, Policy — werden gesammelt und nach dem Beenden unter „during the
+session:“ ausgegeben. Im Druckmodus (`claude -p`) gibt es keine Oberfläche, dort
+bleibt die Ausgabe wie gehabt (`src/terminal.ts`).
+
 **Session-Replay (Problem ③).** `vantage replay <id>` rendert den Event-Log als
 lesbare Timeline — jeder Turn mit Modell/Tokens/Kosten **und Inhalt** (letzter
 Prompt, Antworttext, aufgerufene Tools), Quota-Verlauf und Zusammenfassung:

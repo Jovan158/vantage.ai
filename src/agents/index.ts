@@ -25,6 +25,12 @@ export interface AgentAdapter {
    * such agents degrade to observe-only, and Vantage says so.
    */
   enforcementArgs?(settingsPath: string): string[];
+  /**
+   * Whether these args open the agent's interactive, full-screen UI. While it
+   * is open the agent owns the terminal and Vantage must not write to it
+   * (see src/terminal.ts).
+   */
+  isInteractive(args: string[]): boolean;
 }
 
 // Claude Code respects ANTHROPIC_BASE_URL to redirect its API traffic and
@@ -45,6 +51,11 @@ const claudeCode: AgentAdapter = {
   // hook never removes theirs.
   enforcementArgs(settingsPath: string): string[] {
     return ["--settings", settingsPath];
+  },
+  // -p / --print answers once and exits, printing plain text; everything else
+  // opens the chat UI.
+  isInteractive(args: string[]): boolean {
+    return !args.some((a) => a === "-p" || a === "--print" || a.startsWith("--print="));
   },
 };
 

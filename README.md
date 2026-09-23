@@ -48,6 +48,9 @@ vantage replay <id>    # replay one as a timeline
 
 Arguments after `--` go to Claude Code: `vantage run claude -- -p "fix the failing test"`.
 
+While Claude Code's chat is open, Vantage writes nothing to its terminal. Live
+numbers are in `vantage watch`; warnings are printed when Claude Code exits.
+
 ## Commands
 
 | Command | Description |

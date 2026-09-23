@@ -32,6 +32,7 @@ import { loadPolicy, PolicyWatcher, needsEnforcement } from "./policy.ts";
 import type { Policy } from "./policy.ts";
 import { runHook, hookSettings, hookInvocation } from "./hook.ts";
 import { resolveCommand } from "./resolve.ts";
+import { TerminalGate } from "./terminal.ts";
 import {
   BudgetGuard,
   budgetStatePath,
@@ -93,14 +94,18 @@ function readMeta(cwd: string, sessionId: string): SessionMeta | null {
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
+// All terminal output goes through the gate, which keeps Vantage out of the
+// agent's interactive UI while it is open (see src/terminal.ts).
+const terminal = new TerminalGate((text) => process.stderr.write(text));
+
 function log(msg: string): void {
-  process.stderr.write(`\x1b[2m[vantage]\x1b[0m ${msg}\n`);
+  terminal.info(`\x1b[2m[vantage]\x1b[0m ${msg}\n`);
 }
 
 function warn(w: QuotaWarning): void {
   const color = w.level === "critical" ? "\x1b[1;31m" : "\x1b[1;33m"; // red / yellow
   const icon = w.level === "critical" ? "⛔" : "⚠";
-  process.stderr.write(`${color}[vantage] ${icon}  ${w.message}\x1b[0m\n`);
+  terminal.alert(`${color}[vantage] ${icon}  ${w.message}\x1b[0m\n`);
 }
 
 // Warn threshold as a fraction 0..1. VANTAGE_QUOTA_WARN accepts a fraction
@@ -211,7 +216,7 @@ async function cmdRun(argv: string[]): Promise<number> {
   const policy = new PolicyWatcher(effectivePolicy);
   const guard = hasBudget(budget) ? new BudgetGuard(budget, budgetStatePath(sessionDir(cwd, sessionId))) : null;
   const onBudget = (change: BudgetChange | null, notes: string[]): void => {
-    for (const note of notes) log(`budget: ${note}`);
+    for (const note of notes) warn({ key: "budget", level: "warn", message: `budget: ${note}` });
     if (!change) return;
     eventLog.append({ ts: new Date().toISOString(), type: "budget", state: change.kind, reason: change.reason });
     if (change.kind === "reached") {
@@ -254,6 +259,7 @@ async function cmdRun(argv: string[]): Promise<number> {
   const proxy = await startProxy({
     upstream,
     provider: adapter.provider,
+    log: (msg) => terminal.info(`\x1b[2m[vantage:proxy]\x1b[0m ${msg}\n`),
     onUsage: (e: UsageEvent) => {
       eventLog.append(e);
       meter.add(e);
@@ -325,7 +331,16 @@ async function cmdRun(argv: string[]): Promise<number> {
   // A launch that never gets going must still end its session — otherwise
   // `watch` shows it as running forever — and must not leave an empty
   // isolation worktree behind.
+  // Ends the quiet period and prints the alerts held back meanwhile.
+  const releaseTerminal = (): void => {
+    const held = terminal.release();
+    if (held.length === 0) return;
+    log("during the session:");
+    for (const line of held) terminal.alert(line);
+  };
+
   const failLaunch = async (reason: string): Promise<number> => {
+    releaseTerminal();
     log(`could not launch ${adapter.command}: ${reason}`);
     eventLog.append({ ts: new Date().toISOString(), type: "session_end", exitCode: 127 });
     if (worktree) removeSessionWorktree(cwd, worktree.path, worktree.branch);
@@ -352,6 +367,14 @@ async function cmdRun(argv: string[]): Promise<number> {
     return await failLaunch(target.reason + hint);
   }
 
+  // From here until the agent exits, its chat UI owns the terminal. Anything
+  // written now would land inside that UI, so live numbers go to
+  // `vantage watch` and alerts wait until the end.
+  if (adapter.isInteractive(agentArgs) && process.stderr.isTTY) {
+    log("live view: run `vantage watch` in a second terminal — Vantage stays quiet here until Claude Code exits");
+    terminal.hold();
+  }
+
   const child = spawn(target.resolved.command, [...target.resolved.prefix, ...finalArgs], {
     cwd: childCwd,
     stdio: "inherit",
@@ -371,6 +394,7 @@ async function cmdRun(argv: string[]): Promise<number> {
       void failLaunch(reason).then(resolve);
     });
     child.on("exit", async (code) => {
+      releaseTerminal();
       eventLog.append({ ts: new Date().toISOString(), type: "session_end", exitCode: code });
       const t = meter.snapshot();
       log(

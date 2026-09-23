@@ -22,7 +22,7 @@ import type { UsageEvent } from "./events.ts";
 
 const DEBUG = process.env.VANTAGE_DEBUG === "1";
 
-function log(msg: string): void {
+function stderrLog(msg: string): void {
   process.stderr.write(`\x1b[2m[vantage:proxy]\x1b[0m ${msg}\n`);
 }
 
@@ -54,6 +54,8 @@ export interface ProxyOptions {
   provider?: ProviderName;
   onUsage?: (event: UsageEvent) => void;
   onRateLimit?: (snapshot: RateLimitSnapshot) => void;
+  /** Where VANTAGE_DEBUG output goes; defaults to stderr. */
+  log?: (msg: string) => void;
 }
 
 export interface RunningProxy {
@@ -66,6 +68,7 @@ export interface RunningProxy {
 }
 
 export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
+  const log = opts.log ?? stderrLog;
   const upstreamUrl = new URL(opts.upstream);
   const transport = upstreamTransport(opts.upstream);
   const upstreamClient = transport.client;
