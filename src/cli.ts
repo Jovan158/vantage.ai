@@ -27,7 +27,8 @@ import { QuotaWatcher } from "./ratelimit.ts";
 import type { QuotaWarning } from "./ratelimit.ts";
 import { renderTimeline, listSessions } from "./replay.ts";
 import { renderLive, newestSessionId, readSessionEvents, findWatchTarget } from "./watch.ts";
-import { recordLastSession } from "./home.ts";
+import { recordLastSession, findSession, knownSessions } from "./home.ts";
+import { sessionStat, renderStats, type SessionStat } from "./stats.ts";
 import { collectHarvest, renderHarvest, worthHarvesting } from "./harvest.ts";
 import { compileMemory, initMemory, addNote, memoryDir } from "./memory.ts";
 import { loadPolicy, PolicyWatcher, needsEnforcement } from "./policy.ts";
@@ -136,6 +137,7 @@ function printHelp(): void {
       `              <agent> [-- <agent args...>]\n` +
       `  vantage watch [sessionId]\n` +
       `  vantage sessions\n` +
+      `  vantage stats [--days N]\n` +
       `  vantage replay <sessionId>\n` +
       `  vantage harvest [sessionId]\n` +
       `  vantage review <sessionId> [--patch]\n` +
@@ -647,12 +649,13 @@ async function cmdReplay(argv: string[]): Promise<number> {
     log("usage: vantage replay <sessionId>  (see: vantage sessions)");
     return 1;
   }
-  const logPath = sessionEventsPath(cwd, sessionId);
-  if (!fs.existsSync(logPath)) {
-    log(`no session "${sessionId}" found under .vantage/sessions/`);
+  const ref = findSession(sessionId, cwd);
+  if (!ref) {
+    log(`no session "${sessionId}" found here or among the sessions this machine recorded`);
     return 1;
   }
-  const events = new EventLog(logPath).readAll();
+  if (path.resolve(ref.cwd) !== path.resolve(cwd)) log(`session from ${ref.cwd}`);
+  const events = new EventLog(sessionEventsPath(ref.cwd, ref.sessionId)).readAll();
   process.stdout.write(renderTimeline(events, process.stdout.isTTY ?? false) + "\n");
   return 0;
 }
@@ -680,6 +683,27 @@ async function cmdHarvest(argv: string[]): Promise<number> {
 
   const harvest = collectHarvest(sessionId, events, files);
   process.stdout.write(renderHarvest(harvest, process.stdout.isTTY ?? false) + "\n");
+  return 0;
+}
+
+async function cmdStats(argv: string[]): Promise<number> {
+  let days = 7;
+  const i = argv.findIndex((a) => a === "--days" || a.startsWith("--days="));
+  if (i !== -1) {
+    const raw = argv[i]!.includes("=") ? argv[i]!.split("=")[1] : argv[i + 1];
+    days = Number(raw);
+    if (!Number.isInteger(days) || days < 1 || days > 366) {
+      log(`--days needs a whole number from 1 to 366 (got "${raw ?? ""}")`);
+      return 1;
+    }
+  }
+  const cwd = process.cwd();
+  const stats: SessionStat[] = [];
+  for (const ref of knownSessions(cwd)) {
+    const stat = sessionStat(ref, readSessionEvents(ref.cwd, ref.sessionId));
+    if (stat) stats.push(stat);
+  }
+  process.stdout.write(renderStats(stats, { days, cwd, color: process.stdout.isTTY ?? false }) + "\n");
   return 0;
 }
 
@@ -999,6 +1023,9 @@ async function main(): Promise<void> {
       break;
     case "sessions":
       process.exit(await cmdSessions());
+      break;
+    case "stats":
+      process.exit(await cmdStats(rest));
       break;
     case "replay":
       process.exit(await cmdReplay(rest));

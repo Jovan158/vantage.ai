@@ -13,8 +13,8 @@ Claude Code's own hooks to enforce your rules.
 - **Budgets.** Past a cost or quota limit you set, every action needs your approval.
 - **Approvals by action type.** Allow, warn, ask or deny file reads, writes, shell
   commands and network access.
-- **Session replay.** Every prompt, reply and tool call as a timeline, with
-  secrets redacted.
+- **Session replay and stats.** Every prompt, reply and tool call as a timeline,
+  with secrets redacted, and usage over days and projects.
 - **Change summary.** In a git repository, every session ends with the files it
   changed, and `vantage review` shows the diff. Or run fully isolated in a
   separate git worktree.
@@ -62,7 +62,8 @@ a task that took a while, or nears a limit or budget.
 | `vantage run [options] claude [-- args]` | Start Claude Code through Vantage |
 | `vantage watch [id]` | Live view of the latest session, from any directory |
 | `vantage sessions` | List past sessions |
-| `vantage replay <id>` | Show a session as a timeline |
+| `vantage stats [--days N]` | Usage by day and project, and the largest sessions |
+| `vantage replay <id>` | Show a session as a timeline, from any directory |
 | `vantage review <id> [--patch]` | Files a session changed, or the full diff |
 | `vantage discard <id>` | Discard an isolated session's worktree and branch |
 | `vantage memory init` · `add <category> <text>` · `show` | Manage project memory |

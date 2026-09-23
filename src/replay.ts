@@ -58,8 +58,14 @@ export interface SessionSummary {
   startedAt: string | null;
   /** Every metered request, background calls included (cost basis). */
   requests: number;
-  /** Chat turns only — what the user would count. */
+  /** Chat turns only (one per model call in Claude's tool loop). */
   turns: number;
+  /**
+   * Messages from the user. Claude calls the model again after every tool
+   * it runs, carrying the last message along — so a new message is a turn
+   * whose prompt changed.
+   */
+  messages: number;
   input: number;
   output: number;
   cacheRead: number;
@@ -77,6 +83,7 @@ export function summarize(sessionId: string, events: VantageEvent[]): SessionSum
     startedAt: null,
     requests: 0,
     turns: 0,
+    messages: 0,
     input: 0,
     output: 0,
     cacheRead: 0,
@@ -85,6 +92,7 @@ export function summarize(sessionId: string, events: VantageEvent[]): SessionSum
     unpriced: 0,
     exitCode: undefined,
   };
+  let lastPrompt: string | undefined;
   for (const e of events) {
     if (e.type === "session_start") {
       s.agent = e.agent ?? null;
@@ -93,7 +101,11 @@ export function summarize(sessionId: string, events: VantageEvent[]): SessionSum
       s.exitCode = e.exitCode;
     } else if (e.type === "usage") {
       s.requests += 1;
-      if (!e.background) s.turns += 1;
+      if (!e.background) {
+        s.turns += 1;
+        if (e.prompt && e.prompt !== lastPrompt) s.messages += 1;
+        lastPrompt = e.prompt ?? lastPrompt;
+      }
       s.input += e.in;
       s.output += e.out;
       s.cacheRead += e.cache_read;

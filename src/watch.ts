@@ -224,17 +224,9 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
 
   // --- This session: turns, cost, budget, context.
   section("This session");
-  // Claude calls the model again after every tool it runs, carrying your
-  // last message along — so a new message is a turn whose prompt changed.
-  let messages = 0;
-  let previous: string | undefined;
-  for (const e of turns) {
-    if (e.prompt && e.prompt !== previous) messages += 1;
-    previous = e.prompt ?? previous;
-  }
   const callCount = turns.reduce((n, e) => n + (e.calls?.length ?? e.tools?.length ?? 0), 0);
   lines.push(
-    `  ${c.dim}work${c.reset}     ${c.bold}${messages}${c.reset} message(s) from you` +
+    `  ${c.dim}work${c.reset}     ${c.bold}${s.messages}${c.reset} message(s) from you` +
       `${c.dim}  →  ${c.reset}${s.turns} model call(s)${callCount ? `, ${callCount} tool call(s)` : ""}`
   );
   lines.push(
