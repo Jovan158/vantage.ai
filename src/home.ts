@@ -117,6 +117,41 @@ export function knownSessions(cwd?: string): SessionRef[] {
   return [...seen.values()];
 }
 
+function statSignature(p: string): string {
+  try {
+    const s = fs.statSync(p);
+    return `${s.mtimeMs}:${s.size}`;
+  } catch {
+    return "-";
+  }
+}
+
+// knownSessions() for a loop that asks every half second: the list is built
+// again only when the index or the project's session folder changed, and at
+// least every `maxAgeMs` (a session folder can appear before its log).
+export class SessionList {
+  private signature = "";
+  private builtAt = 0;
+  private refs: SessionRef[] = [];
+  private readonly cwd: string | undefined;
+  private readonly maxAgeMs: number;
+
+  constructor(cwd?: string, maxAgeMs = 5000) {
+    this.cwd = cwd;
+    this.maxAgeMs = maxAgeMs;
+  }
+
+  get(nowMs = Date.now()): SessionRef[] {
+    const signature = [sessionIndexPath(), ...(this.cwd ? [path.join(this.cwd, ".vantage", "sessions")] : [])].map(statSignature).join("|");
+    if (signature !== this.signature || nowMs - this.builtAt >= this.maxAgeMs) {
+      this.refs = knownSessions(this.cwd);
+      this.signature = signature;
+      this.builtAt = nowMs;
+    }
+    return this.refs;
+  }
+}
+
 export function readLastSession(): SessionRef | null {
   try {
     const ref = JSON.parse(fs.readFileSync(lastSessionPath(), "utf8")) as Partial<SessionRef>;

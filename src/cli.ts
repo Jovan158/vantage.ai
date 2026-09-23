@@ -15,10 +15,12 @@ import { startProxy } from "./proxy.ts";
 import { Meter } from "./meter.ts";
 import {
   EventLog,
+  EventTail,
   newSessionId,
   sessionDir,
   sessionEventsPath,
   type UsageEvent,
+  type VantageEvent,
 } from "./events.ts";
 import { resolveAdapter, knownAgents } from "./agents/index.ts";
 import { startMockAnthropic } from "./dev/mock-anthropic.ts";
@@ -26,7 +28,7 @@ import { QuotaWatcher } from "./ratelimit.ts";
 import type { QuotaWarning } from "./ratelimit.ts";
 import { renderTimeline, listSessions, shortenPaths } from "./replay.ts";
 import { renderLive, renderOverview, newestSessionId, readSessionEvents, findWatchTarget } from "./watch.ts";
-import { recordLastSession, findSession, knownSessions, sessionRunning, type SessionRef } from "./home.ts";
+import { recordLastSession, findSession, knownSessions, sessionRunning, SessionList, type SessionRef } from "./home.ts";
 import { sessionStat, renderStats, type SessionStat } from "./stats.ts";
 import { searchSession, renderSearch, type Scope, type SessionHits } from "./search.ts";
 import { runDoctor, renderDoctor } from "./doctor.ts";
@@ -756,18 +758,37 @@ async function cmdWatch(argv: string[]): Promise<number> {
   };
 
   const waiting = "waiting for a session…  (start one with `vantage run claude`)";
+  const key = (r: SessionRef): string => `${path.resolve(r.cwd)}|${r.sessionId}`;
+  // Logs are followed, not re-read: each tick parses only what was appended.
+  const tails = new Map<string, EventTail>();
+  const eventsOf = (ref: SessionRef): VantageEvent[] => {
+    let tail = tails.get(key(ref));
+    if (!tail) tails.set(key(ref), (tail = new EventTail(sessionEventsPath(ref.cwd, ref.sessionId))));
+    return tail.read();
+  };
   // Sessions seen ended stay ended; no need to look at them again.
   const ended = new Set<string>();
-  const key = (r: SessionRef): string => `${path.resolve(r.cwd)}|${r.sessionId}`;
+  const list = new SessionList(cwd);
   const running = (): SessionRef[] =>
-    knownSessions(cwd).filter((r) => {
+    list.get().filter((r) => {
       if (ended.has(key(r))) return false;
       if (sessionRunning(r)) return true;
       ended.add(key(r));
       return false;
     });
+  // The session to show when none runs changes only when the list does.
+  let fallbackFor: SessionRef[] | null = null;
+  let fallback: SessionRef | null = null;
+  const lastSession = (): SessionRef | null => {
+    const refs = list.get();
+    if (refs !== fallbackFor) {
+      fallbackFor = refs;
+      fallback = findWatchTarget(cwd);
+    }
+    return fallback;
+  };
 
-  const detail = (ref: SessionRef, events = readSessionEvents(ref.cwd, ref.sessionId)): string | null => {
+  const detail = (ref: SessionRef, events = eventsOf(ref)): string | null => {
     if (events.length === 0) return null;
     return renderLive(events, {
       sessionId: ref.sessionId,
@@ -797,7 +818,7 @@ async function cmdWatch(argv: string[]): Promise<number> {
       if (pinned) {
         pinnedRef ??= findSession(pinned, cwd);
         if (!pinnedRef) return draw(`no session ${pinned} found — see \`vantage sessions\` or \`vantage search\``);
-        const events = readSessionEvents(pinnedRef.cwd, pinnedRef.sessionId);
+        const events = eventsOf(pinnedRef);
         const frame = detail(pinnedRef, events);
         if (frame) draw(frame);
         // Ended, or its vantage process is gone (crashed without an end).
@@ -808,10 +829,10 @@ async function cmdWatch(argv: string[]): Promise<number> {
       // session in detail, or the last one when none runs.
       const live = running();
       if (live.length >= 2) {
-        const items = live.map((ref) => ({ ref, events: readSessionEvents(ref.cwd, ref.sessionId) }));
+        const items = live.map((ref) => ({ ref, events: eventsOf(ref) }));
         return draw(renderOverview(items, { color: process.stdout.isTTY ?? false, width: process.stdout.columns }));
       }
-      const target = live[0] ?? findWatchTarget(cwd);
+      const target = live[0] ?? lastSession();
       if (!target) return draw(waiting);
       const frame = detail(target);
       if (frame) draw(frame);

@@ -137,3 +137,45 @@ test("`vantage watch <id>` stops for a session whose vantage crashed", async () 
   assert.equal(r.code, 0, "exits on its own instead of watching forever");
   for (const d of [home, project]) fs.rmSync(d, { recursive: true, force: true });
 });
+
+test("a followed log parses only what was appended, holds back a half-written line and survives a restart", async () => {
+  const { EventTail } = await import("../src/events.ts");
+  const file = path.join(tmp("vantage-tail-"), "events.jsonl");
+  const tail = new EventTail(file);
+  assert.deepEqual(tail.read(), [], "no file yet");
+  const a = JSON.stringify({ ts: T(1), type: "request", model: "m" });
+  const b = JSON.stringify({ ts: T(2), type: "decision", tool: "Bash", decision: "ask", reason: "Größe" });
+  const bytes = Buffer.from(b + "\n");
+  const cut = bytes.indexOf(Buffer.from("ö")) + 1; // inside the two bytes of "ö"
+  fs.writeFileSync(file, Buffer.concat([Buffer.from(a + "\n"), bytes.subarray(0, cut)]));
+  assert.equal(tail.read().length, 1);
+  fs.appendFileSync(file, bytes.subarray(cut));
+  const both = tail.read();
+  assert.deepEqual(both.map((e) => e.type), ["request", "decision"]);
+  assert.equal((both[1] as { reason?: string }).reason, "Größe", "multi-byte text split across reads");
+  assert.equal(tail.read(), both, "nothing new: the same list");
+  fs.writeFileSync(file, b + "\n");
+  assert.deepEqual(tail.read().map((e) => e.type), ["decision"], "a shorter log is read from the start");
+});
+
+test("the session list is rebuilt only when the index or the session folder changes", async () => {
+  const { SessionList } = await import("../src/home.ts");
+  const home = tmp("vantage-home-");
+  const cwd = tmp("vantage-list-");
+  const prev = process.env.VANTAGE_HOME;
+  process.env.VANTAGE_HOME = home;
+  try {
+    writeSession(cwd, "s1", [start(cwd)]);
+    const list = new SessionList(cwd, 60_000);
+    const first = list.get(NOW);
+    assert.deepEqual(first.map((r) => r.sessionId), ["s1"]);
+    assert.equal(list.get(NOW + 1000), first, "unchanged: cached");
+    const other = tmp("vantage-list-other-");
+    writeSession(other, "s2", [start(other)]);
+    fs.appendFileSync(path.join(home, "sessions.jsonl"), JSON.stringify({ cwd: other, sessionId: "s2" }) + "\n");
+    assert.deepEqual(list.get(NOW + 2000).map((r) => r.sessionId).sort(), ["s1", "s2"], "index grew: rebuilt");
+  } finally {
+    if (prev === undefined) delete process.env.VANTAGE_HOME;
+    else process.env.VANTAGE_HOME = prev;
+  }
+});

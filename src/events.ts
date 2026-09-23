@@ -108,6 +108,54 @@ export class EventLog {
   }
 }
 
+// Follows a log that is still being written: each read() parses only what was
+// appended since the last one, so watching a long session stays cheap. A
+// line still being written is held back until it is complete; a log that
+// shrank (replaced or truncated) is read again from the start.
+export class EventTail {
+  readonly filePath: string;
+  private offset = 0;
+  private partial: Buffer = Buffer.alloc(0);
+  private events: VantageEvent[] = [];
+
+  constructor(filePath: string) {
+    this.filePath = filePath;
+  }
+
+  read(): VantageEvent[] {
+    let size: number;
+    try {
+      size = fs.statSync(this.filePath).size;
+    } catch {
+      return this.events;
+    }
+    if (size < this.offset) {
+      this.offset = 0;
+      this.partial = Buffer.alloc(0);
+      this.events = [];
+    }
+    if (size === this.offset) return this.events;
+    let fd: number | null = null;
+    try {
+      fd = fs.openSync(this.filePath, "r");
+      const chunk = Buffer.alloc(size - this.offset);
+      const n = fs.readSync(fd, chunk, 0, chunk.length, this.offset);
+      this.offset += n;
+      const data = Buffer.concat([this.partial, chunk.subarray(0, n)]);
+      // Split on the byte, not the string: a read can end inside a multi-byte
+      // character, but never inside a newline.
+      const end = data.lastIndexOf(0x0a);
+      this.partial = end === -1 ? data : data.subarray(end + 1);
+      if (end !== -1) this.events = this.events.concat(parseEventLines(data.subarray(0, end).toString("utf8")));
+    } catch {
+      /* unreadable right now; the next read tries again */
+    } finally {
+      if (fd !== null) fs.closeSync(fd);
+    }
+    return this.events;
+  }
+}
+
 export function parseEventLines(text: string): VantageEvent[] {
   const out: VantageEvent[] = [];
   for (const line of text.split("\n")) {
