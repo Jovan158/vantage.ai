@@ -94,7 +94,7 @@ test("status says what Claude is doing: thinking, working, waiting for approval"
 
   const asking = [...working, { ts: t(22), type: "decision", tool: "Edit", target: "/home/me/app/src/a.ts", decision: "ask", reason: "r" } as VantageEvent];
   const a = renderLive(asking, { sessionId: "s", nowMs: NOW, color: false });
-  assert.match(a, /Waiting for your approval in Claude Code: Edit src\/a\.ts/);
+  assert.match(a, /Approval requested \d+s ago: Edit src\/a\.ts/);
   assert.match(a, /asked\s+Edit\s+src\/a\.ts/, "the decision marks the call, not a second entry");
   assert.equal(a.match(/src\/a\.ts/g)?.length, 2, "status line + one activity entry");
 });
@@ -107,7 +107,7 @@ test("a decision logged before its turn (the hook runs mid-stream) is one entry,
     turn(4, { prompt: "run it", stopReason: "tool_use", tools: ["Bash"], calls: [{ tool: "Bash", target: "node app.js" }] }),
   ];
   const out = renderLive(events, { sessionId: "s", nowMs: NOW, color: false });
-  assert.match(out, /Waiting for your approval in Claude Code: Bash node app\.js/);
+  assert.match(out, /Approval requested \d+s ago: Bash node app\.js/);
   assert.equal(out.match(/node app\.js/g)?.length, 2, "status line + a single activity entry");
   // Answered: Claude continues with its next request.
   const answered = [...events, { ts: t(8), type: "request" } as VantageEvent];
@@ -241,3 +241,4 @@ test("a damaged line in a log is skipped; the rest of the session stays readable
   const text = [JSON.stringify({ ts: T0, type: "session_start" }), '{"ts":"x","type":"usa', JSON.stringify({ ts: T0, type: "session_end", exitCode: 0 }), "[1,2]"].join("\n");
   assert.deepEqual(parseEventLines(text).map((e) => e.type), ["session_start", "session_end"]);
 });
+

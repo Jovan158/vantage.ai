@@ -77,7 +77,7 @@ test("the overview shows the shared limits once and one block per session", () =
   assert.equal(out.match(/5-hour/g)?.length, 1, "limits once, not per session");
   assert.match(out, /web\s+1m\s+Claude is working: Edit app\.css/);
   assert.match(out, /~\$0\.2500 · 1 message\(s\)/);
-  assert.match(out, /api\s+1m\s+Waiting for your approval in Claude Code: Bash npm test/);
+  assert.match(out, /api\s+1m\s+Approval requested \d+s ago: Bash npm test/);
   assert.match(out, /~\$0\.0500 · 1 message\(s\) · budget reached/);
   assert.match(out, /vantage watch 2026-09-23T12-00-10-000Z_api1\s+api/);
 });

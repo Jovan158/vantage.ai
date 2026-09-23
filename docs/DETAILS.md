@@ -149,7 +149,7 @@ hat Claude gearbeitet? Was kostet das?
 vantage · running · 3m · claude-opus-5-5 · vantage.dev
 2026-09-23T12-00-00-000Z_ab12
 
-Waiting for your approval in Claude Code: Bash npm test
+Approval requested 15s ago: Bash npm test
 
 Limits
   5-hour  ███████████████░░░░░  74%  resets 15:00 (in 56m)
@@ -171,7 +171,7 @@ Activity · read×2 · write×1 · shell×1 · 1 file(s) edited
 ```
 
 - **Status:** „Claude is thinking…“ (Anfrage läuft), „Claude is working: Edit
-  src/app.ts“ (führt Tools aus), „Waiting for your approval“ (eine `ask`-Regel
+  src/app.ts“ (führt Tools aus), „Approval requested 15s ago“ (eine `ask`-Regel
   oder ein Budget hat eine Rückfrage ausgelöst), „Claude replied“.
 - **Limits:** Balken grün/gelb/rot, Reset als Uhrzeit, der Anteil dieser Session
   und eine Prognose: Reicht das aktuelle Tempo bis zum Reset? Die Fenster gelten

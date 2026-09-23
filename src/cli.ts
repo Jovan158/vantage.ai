@@ -15,7 +15,6 @@ import { startProxy } from "./proxy.ts";
 import { Meter } from "./meter.ts";
 import {
   EventLog,
-  followEvents,
   newSessionId,
   sessionDir,
   sessionEventsPath,
@@ -39,8 +38,6 @@ import type { Policy } from "./policy.ts";
 import { runHook, hookSettings, hookInvocation, decisionRecord } from "./hook.ts";
 import { resolveCommand } from "./resolve.ts";
 import { TerminalGate } from "./terminal.ts";
-import { Notifier, systemSend } from "./notify.ts";
-import { loadConfig, enabledNotifyKinds, configPath } from "./config.ts";
 import {
   BudgetGuard,
   budgetStatePath,
@@ -136,7 +133,7 @@ function printHelp(): void {
   process.stdout.write(
     `vantage — see and control what Claude Code does\n\n` +
       `Usage:\n` +
-      `  vantage run [--isolate] [--no-memory] [--no-notify] [--max-cost <usd>] [--max-quota <percent>]\n` +
+      `  vantage run [--isolate] [--no-memory] [--max-cost <usd>] [--max-quota <percent>]\n` +
       `              <agent> [-- <agent args...>]\n` +
       `  vantage watch [sessionId]\n` +
       `  vantage sessions\n` +
@@ -149,7 +146,7 @@ function printHelp(): void {
       `  vantage memory <init|show|add <category> <text>>\n` +
       `  vantage policy [init]\n` +
       `  vantage pricing [update|check]\n` +
-      `  vantage doctor [--no-notify]\n` +
+      `  vantage doctor\n` +
       `  vantage demo\n` +
       `  vantage --help\n\n` +
       `Agents: ${knownAgents().join(", ")}\n\n` +
@@ -172,7 +169,6 @@ async function cmdRun(argv: string[]): Promise<number> {
   // Leading vantage-level flags come before the agent name.
   let isolate = false;
   let useMemory = true;
-  let noNotify = false;
   let costRaw = process.env.VANTAGE_MAX_COST;
   let quotaRaw = process.env.VANTAGE_MAX_QUOTA;
   const rest = [...argv];
@@ -184,7 +180,6 @@ async function cmdRun(argv: string[]): Promise<number> {
     if (flag === "--isolate") isolate = true;
     else if (flag === "--no-isolate") isolate = false;
     else if (flag === "--no-memory") useMemory = false;
-    else if (flag === "--no-notify") noNotify = true;
     else if (flag === "--max-cost") costRaw = value();
     else if (flag === "--max-quota") quotaRaw = value();
     else {
@@ -237,15 +232,9 @@ async function cmdRun(argv: string[]): Promise<number> {
   const guard = hasBudget(budget) ? new BudgetGuard(budget, budgetStatePath(sessionDir(cwd, sessionId))) : null;
 
   // Claude Code's chat UI owns the terminal from launch until exit; Vantage
-  // then speaks through `vantage watch` and desktop notifications only.
+  // then speaks through `vantage watch` only, and alerts wait until the end.
   const interactive = adapter.isInteractive(agentArgs) && Boolean(process.stderr.isTTY);
-  const { config, error: configError } = loadConfig();
-  if (configError) log(`ignored settings — ${configError}`);
-  const notifyKinds = enabledNotifyKinds(config, { interactive, noNotifyFlag: noNotify });
-  const notifier = notifyKinds.size > 0 ? new Notifier(systemSend(), { kinds: notifyKinds, project: path.basename(cwd) }) : null;
-  let lastRequestMs = 0;
   const seenSecrets = new Set<string>();
-  let messageStartMs: number | null = null;
 
   const onBudget = (change: BudgetChange | null, notes: string[]): void => {
     for (const note of notes) warn({ key: "budget", level: "warn", message: `budget: ${note}` });
@@ -253,7 +242,6 @@ async function cmdRun(argv: string[]): Promise<number> {
     eventLog.append({ ts: new Date().toISOString(), type: "budget", state: change.kind, reason: change.reason });
     if (change.kind === "reached") {
       warn({ key: "budget", level: "critical", message: `budget reached — ${change.reason}. Every action now needs your approval.` });
-      notifier?.notify("budget", "budget", "Budget reached", `${change.reason}. Claude now asks before every action.`);
     } else {
       log(`budget: ${change.reason} — actions run as before`);
     }
@@ -321,26 +309,14 @@ async function cmdRun(argv: string[]): Promise<number> {
         const article = /^[aeiou]/i.test(f.kind) ? "an" : "a";
         const message = `${article} ${f.kind} (${f.masked}) was sent to the API, from ${source} — rotate it if it should not leave your machine`;
         warn({ key: `secret:${f.fingerprint}`, level: "critical", message });
-        notifier?.notify("secrets", `secret:${f.fingerprint}`, "Secret sent to the API", `${f.kind} from ${source}`);
       }
       if (info.background) return;
       eventLog.append({ ts: new Date().toISOString(), type: "request" });
-      lastRequestMs = Date.now();
-      messageStartMs ??= lastRequestMs;
     },
     log: (msg) => terminal.info(`\x1b[2m[vantage:proxy]\x1b[0m ${msg}\n`),
     onUsage: (e: UsageEvent) => {
       eventLog.append(e);
       meter.add(e);
-      // A reply that ends the tool loop finishes the message. Worth a
-      // notification only when it took long enough for you to look away.
-      if (!e.background && e.stopReason !== "tool_use" && messageStartMs !== null) {
-        const took = Date.now() - messageStartMs;
-        if (took >= 30_000) {
-          notifier?.notify("done", `done:${messageStartMs}`, "Claude is done", `Finished after ${Math.round(took / 1000)}s${e.prompt ? `: ${e.prompt.slice(0, 80)}` : ""}`);
-        }
-        messageStartMs = null;
-      }
       log(meter.statusLine());
       if (guard) {
         const t = meter.snapshot();
@@ -362,10 +338,7 @@ async function cmdRun(argv: string[]): Promise<number> {
         path: "/",
         raw: snapshot.raw,
       });
-      for (const w of quota.update(snapshot)) {
-        warn(w);
-        notifier?.notify("limits", `quota:${w.key}`, "Usage limit", w.message);
-      }
+      for (const w of quota.update(snapshot)) warn(w);
       if (guard) onBudget(guard.onQuota(snapshot), guard.blindSpots([], snapshot));
     },
   });
@@ -460,23 +433,8 @@ async function cmdRun(argv: string[]): Promise<number> {
   // `vantage watch` and alerts wait until the end.
   if (interactive) {
     log("live view: run `vantage watch` in a second terminal — Vantage stays quiet here until Claude Code exits");
-    if (notifier) log(`desktop notifications: ${[...notifyKinds].join(", ")} (settings: ${configPath()}, off: --no-notify)`);
     terminal.hold();
   }
-
-  // The hook (a separate process) logs its questions to the event log. A
-  // question still open after 10 seconds — no new request from Claude, so
-  // nobody answered — is worth a notification.
-  const stopDecisionWatch = notifier
-    ? followEvents(eventLog.filePath, (e) => {
-        if (e.type !== "decision" || e.decision !== "ask") return;
-        const askedMs = Date.parse(e.ts);
-        setTimeout(() => {
-          if (lastRequestMs > askedMs) return;
-          notifier.notify("approval", `ask:${e.ts}`, "Claude is waiting for your approval", `${e.tool}${e.target ? ` ${e.target}` : ""}`);
-        }, 10_000).unref();
-      })
-    : () => {};
 
   const child = spawn(target.resolved.command, [...target.resolved.prefix, ...finalArgs], {
     cwd: childCwd,
@@ -497,7 +455,6 @@ async function cmdRun(argv: string[]): Promise<number> {
       void failLaunch(reason).then(resolve);
     });
     child.on("exit", async (code) => {
-      stopDecisionWatch();
       releaseTerminal();
 
       // What changed: the isolation branch, or the working tree since start.
@@ -755,8 +712,8 @@ async function cmdSearch(argv: string[]): Promise<number> {
   return results.length ? 0 : 1;
 }
 
-async function cmdDoctor(argv: string[]): Promise<number> {
-  const checks = runDoctor({ cwd: process.cwd(), entry: fileURLToPath(import.meta.url), notify: !argv.includes("--no-notify") });
+async function cmdDoctor(): Promise<number> {
+  const checks = runDoctor({ cwd: process.cwd(), entry: fileURLToPath(import.meta.url) });
   process.stdout.write(renderDoctor(checks, process.stdout.isTTY ?? false) + "\n");
   return checks.some((c) => c.level === "fail") ? 1 : 0;
 }
@@ -1113,7 +1070,7 @@ async function main(): Promise<void> {
       process.exit(await cmdSearch(rest));
       break;
     case "doctor":
-      process.exit(await cmdDoctor(rest));
+      process.exit(await cmdDoctor());
       break;
     case "replay":
       process.exit(await cmdReplay(rest));

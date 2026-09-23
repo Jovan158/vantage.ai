@@ -1,17 +1,15 @@
 // `vantage doctor`: is everything Vantage relies on in place on this machine?
 //
 // Each check runs the real thing where it can — starts Claude Code for its
-// version, runs the registered hook the way Claude Code would, sends an
-// actual desktop notification — so a pass means it works, not just that a
-// file exists. Every problem comes with what to do about it.
+// version, runs the registered hook the way Claude Code would — so a pass
+// means it works, not just that a file exists. Every problem comes with what
+// to do about it.
 
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { resolveCommand } from "./resolve.ts";
 import { hookInvocation } from "./hook.ts";
-import { notifyCommand } from "./notify.ts";
-import { loadConfig, enabledNotifyKinds, configPath } from "./config.ts";
 import { loadRules, policyFilePath } from "./rules.ts";
 import { activePrices, STALE_AFTER_DAYS } from "./pricing.ts";
 import { vantageHome, knownSessions, sessionRunning } from "./home.ts";
@@ -33,8 +31,6 @@ export interface DoctorOptions {
   entry: string;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
-  /** Send a real test notification (on by default; off in tests). */
-  notify?: boolean;
   nowMs?: number;
 }
 
@@ -114,38 +110,6 @@ export function checkHome(): Check {
   }
 }
 
-export function checkSettings(opts: DoctorOptions): Check[] {
-  const out: Check[] = [];
-  const { config, error } = loadConfig();
-  if (error) out.push({ level: "warn", text: "settings file ignored", hint: error });
-  const kinds = [...enabledNotifyKinds(config, { interactive: true, env: opts.env ?? process.env })];
-  out.push({
-    level: "info",
-    text: kinds.length ? `notifications during chats: ${kinds.join(", ")}` : "notifications are off",
-    note: `settings: ${configPath()}`,
-  });
-  return out;
-}
-
-// Sends a real notification and waits for the notifier to finish, so a
-// failure can be reported instead of silently swallowed.
-export function checkNotification(opts: DoctorOptions): Check {
-  const platform = opts.platform ?? process.platform;
-  const cmd = notifyCommand(platform, "vantage · test notification", "If you can read this, notifications work.");
-  if (!cmd) return { level: "warn", text: `desktop notifications are not supported on ${platform}` };
-  const r = spawnSync(cmd.command, cmd.args, { env: { ...(opts.env ?? process.env), ...cmd.env }, encoding: "utf8", timeout: 30_000, windowsHide: true });
-  if (r.error || r.status !== 0) {
-    const missing = (r.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
-    const hint = missing
-      ? platform === "linux"
-        ? "install notify-send (package libnotify-bin or libnotify)"
-        : `${cmd.command} not found`
-      : firstLine(r.stderr) || `exit ${r.status}`;
-    return { level: "warn", text: "test notification could not be sent", hint };
-  }
-  return { level: "ok", text: 'test notification sent — you should see "vantage · test notification" now', note: "if it did not appear, check the system's notification settings (Windows: Focus assist / Do not disturb)" };
-}
-
 export function checkPolicy(opts: DoctorOptions): Check {
   const file = policyFilePath(opts.cwd);
   if (!fs.existsSync(file)) return { level: "info", text: "no rules for this folder", note: "`vantage policy init` creates a starter set" };
@@ -179,8 +143,6 @@ export function runDoctor(opts: DoctorOptions): Check[] {
     checkHook(opts),
     checkGit(opts),
     checkHome(),
-    ...checkSettings(opts),
-    ...(opts.notify === false ? [] : [checkNotification(opts)]),
     checkPolicy(opts),
     checkPrices(opts.nowMs),
     checkSessions(opts),

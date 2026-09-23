@@ -122,43 +122,6 @@ export function parseEventLines(text: string): VantageEvent[] {
   return out;
 }
 
-// Calls onEvent for every event appended to the log from now on — including
-// lines other processes (the hook) append. Polls once a second; returns a
-// stop function.
-export function followEvents(filePath: string, onEvent: (e: VantageEvent) => void, intervalMs = 1000): () => void {
-  let offset = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
-  let partial = "";
-  const timer = setInterval(() => {
-    let size: number;
-    try {
-      size = fs.statSync(filePath).size;
-    } catch {
-      return;
-    }
-    if (size <= offset) return;
-    const fd = fs.openSync(filePath, "r");
-    try {
-      const buf = Buffer.alloc(size - offset);
-      fs.readSync(fd, buf, 0, buf.length, offset);
-      offset = size;
-      const lines = (partial + buf.toString("utf8")).split("\n");
-      partial = lines.pop() ?? "";
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          onEvent(JSON.parse(line) as VantageEvent);
-        } catch {
-          /* not a complete event */
-        }
-      }
-    } finally {
-      fs.closeSync(fd);
-    }
-  }, intervalMs);
-  timer.unref();
-  return () => clearInterval(timer);
-}
-
 // Sessions live under .vantage/sessions/<id>/ in the target repo.
 export function sessionDir(cwd: string, sessionId: string): string {
   return path.join(cwd, ".vantage", "sessions", sessionId);

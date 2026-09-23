@@ -101,15 +101,14 @@ export function statusSentence(events: VantageEvent[], now: number, projectPath:
   const lastTurn = turns.at(-1);
   const lastRequest = events.filter((e) => e.type === "request").at(-1);
   const lastDecision = events.filter((e) => e.type === "decision").at(-1);
-  if (
-    // Claude Code runs the hook while the reply is still streaming, so the
-    // question can predate the turn's usage record. It is open until Claude
-    // sends its next request — which happens once you have answered.
-    lastDecision?.type === "decision" &&
-    lastDecision.decision === "ask" &&
-    (!lastRequest || at(lastDecision) >= at(lastRequest))
-  ) {
-    return `${c.yellow}${c.bold}Waiting for your approval in Claude Code:${c.reset} ${fit(`${lastDecision.tool} ${relativeTarget(lastDecision.target ?? "", projectPath)}`, width - 40)}`;
+  // A question is open until Claude sends its next request, which it does
+  // once the tool has run — so an approved tool that is still running looks
+  // the same. Hence "requested", with its age, rather than "waiting".
+  // Claude Code runs our hook while the reply still streams, so the question
+  // can predate the turn's usage record.
+  const openSince = (e: { ts: string } | undefined): boolean => !!e && (!lastRequest || at(e) >= at(lastRequest));
+  if (lastDecision?.type === "decision" && lastDecision.decision === "ask" && openSince(lastDecision)) {
+    return `${c.yellow}${c.bold}Approval requested ${span(now - at(lastDecision))} ago:${c.reset} ${fit(`${lastDecision.tool} ${relativeTarget(lastDecision.target ?? "", projectPath)}`, width - 40)}`;
   }
   if (lastRequest && (!lastTurn || at(lastRequest) > at(lastTurn))) {
     return `${c.cyan}${c.bold}Claude is thinking…${c.reset} ${c.dim}${span(now - at(lastRequest))}${c.reset}`;

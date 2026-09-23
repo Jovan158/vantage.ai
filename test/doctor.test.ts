@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { checkNode, checkClaude, checkHook, checkPolicy, checkNotification, renderDoctor } from "../src/doctor.ts";
+import { checkNode, checkClaude, checkHook, checkPolicy, renderDoctor } from "../src/doctor.ts";
 
 const entry = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "cli.ts");
 const tmp = (p: string): string => fs.mkdtempSync(path.join(os.tmpdir(), p));
@@ -56,10 +56,6 @@ test("a broken policy file is a failure: its rules would silently not apply", ()
   fs.rmSync(cwd, { recursive: true, force: true });
 });
 
-test("notifications: an unsupported system is a warning, not a failure", () => {
-  assert.equal(checkNotification({ cwd: ".", entry, platform: "aix" }).level, "warn");
-});
-
 test("summary: problems, warnings, or all good", () => {
   assert.match(renderDoctor([{ level: "ok", text: "a" }], false), /Everything is in place\./);
   assert.match(renderDoctor([{ level: "warn", text: "a", hint: "do x" }], false), /warn  a\n\s+do x[\s\S]*Ready, with 1 warning/);
@@ -68,7 +64,7 @@ test("summary: problems, warnings, or all good", () => {
 
 test("`vantage doctor` runs end to end", () => {
   const cwd = tmp("vantage-doc-");
-  const r = spawnSync(process.execPath, ["--experimental-strip-types", entry, "doctor", "--no-notify"], {
+  const r = spawnSync(process.execPath, ["--experimental-strip-types", entry, "doctor"], {
     cwd,
     encoding: "utf8",
     env: { ...process.env, VANTAGE_HOME: cwd, VANTAGE_AGENT_PATH: process.execPath },
@@ -77,6 +73,5 @@ test("`vantage doctor` runs end to end", () => {
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /ok\s+approval hook runs and blocks/);
   assert.match(r.stdout, /ok\s+settings folder is writable/);
-  assert.doesNotMatch(r.stdout, /test notification/, "--no-notify skips it");
   fs.rmSync(cwd, { recursive: true, force: true });
 });

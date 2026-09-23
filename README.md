@@ -46,7 +46,7 @@ npm install -g ./vantagedev-0.0.1.tgz
 ## Quick start
 
 ```bash
-vantage doctor         # check the setup once: Claude Code, hook, notifications
+vantage doctor         # check the setup once: Claude Code, hook, git
 vantage run claude     # start Claude Code through Vantage
 vantage watch          # live view — in a second terminal, from any directory
 vantage sessions       # list past sessions
@@ -57,8 +57,6 @@ Arguments after `--` go to Claude Code: `vantage run claude -- -p "fix the faili
 
 While Claude Code's chat is open, Vantage writes nothing to its terminal. Live
 numbers are in `vantage watch`; warnings are printed when Claude Code exits.
-A desktop notification tells you when Claude waits for your approval, finishes
-a task that took a while, or nears a limit or budget.
 
 ## Commands
 
@@ -76,7 +74,7 @@ a task that took a while, or nears a limit or budget.
 | `vantage harvest [id]` | Suggest what to remember from a session |
 | `vantage policy` · `vantage policy init` | Show the rules in effect · create a starter rule file |
 | `vantage pricing` · `vantage pricing update` | Show prices · fetch the current official list |
-| `vantage doctor [--no-notify]` | Check the setup: Claude Code, hook, git, notifications, rules, prices |
+| `vantage doctor` | Check the setup: Claude Code, hook, git, rules, prices |
 | `vantage demo` | Run the whole chain against a mock API (no account needed) |
 
 Options for `run`:
@@ -85,7 +83,6 @@ Options for `run`:
 | --- | --- |
 | `--isolate` | Work in a separate git worktree and branch |
 | `--no-memory` | Don't pass project memory to Claude Code |
-| `--no-notify` | No desktop notifications for this session |
 | `--max-cost <usd>` | Require approval for every action once the estimated cost reaches this |
 | `--max-quota <percent>` | Same, once a quota window is this full |
 
@@ -120,14 +117,8 @@ past them.
 | `VANTAGE_POLICY` | Override rules, e.g. `shell:deny,network:ask` |
 | `VANTAGE_MAX_COST`, `VANTAGE_MAX_QUOTA` | Budget, same as the `run` options |
 | `VANTAGE_QUOTA_WARN` | Quota warning threshold in percent (default 90) |
-| `VANTAGE_NOTIFY` | `0` turns desktop notifications off, `1` turns them on outside the chat UI too |
 | `VANTAGE_AGENT_PATH` | Path to Claude Code if it is not found on `PATH` |
 | `VANTAGE_DEBUG=1` | Log upstream status and rate-limit headers |
-
-Desktop notifications can be tuned in `~/.vantage/config.json` — all off with
-`{ "notify": false }`, or single kinds, e.g. `{ "notify": { "done": false } }`.
-Kinds: `approval`, `done`, `limits`, `budget`, `secrets`. `--no-notify` and
-`VANTAGE_NOTIFY` take precedence over the file.
 
 Cost is an estimate of what the traffic would cost on the API at list price. On a
 subscription, the quota line is what counts.
