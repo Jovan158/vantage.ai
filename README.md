@@ -67,6 +67,7 @@ a task that took a while, or nears a limit or budget.
 | `vantage watch [id]` | Live view of the latest session, from any directory |
 | `vantage sessions` | List past sessions |
 | `vantage stats [--days N]` | Usage by day and project, and the largest sessions |
+| `vantage search <text> [--files \| --commands]` | Which session did what: messages, files, commands, blocks |
 | `vantage replay <id>` | Show a session as a timeline, from any directory |
 | `vantage review <id> [--patch]` | Files a session changed, or the full diff |
 | `vantage discard <id>` | Discard an isolated session's worktree and branch |

@@ -29,6 +29,7 @@ import { renderTimeline, listSessions, shortenPaths } from "./replay.ts";
 import { renderLive, newestSessionId, readSessionEvents, findWatchTarget } from "./watch.ts";
 import { recordLastSession, findSession, knownSessions } from "./home.ts";
 import { sessionStat, renderStats, type SessionStat } from "./stats.ts";
+import { searchSession, renderSearch, type Scope, type SessionHits } from "./search.ts";
 import { collectHarvest, renderHarvest, worthHarvesting } from "./harvest.ts";
 import { compileMemory, initMemory, addNote, memoryDir } from "./memory.ts";
 import { loadPolicy, PolicyWatcher, needsEnforcement } from "./policy.ts";
@@ -138,6 +139,7 @@ function printHelp(): void {
       `  vantage watch [sessionId]\n` +
       `  vantage sessions\n` +
       `  vantage stats [--days N]\n` +
+      `  vantage search <text> [--files | --commands]\n` +
       `  vantage replay <sessionId>\n` +
       `  vantage harvest [sessionId]\n` +
       `  vantage review <sessionId> [--patch]\n` +
@@ -718,6 +720,32 @@ async function cmdStats(argv: string[]): Promise<number> {
   return 0;
 }
 
+async function cmdSearch(argv: string[]): Promise<number> {
+  let scope: Scope = "all";
+  const words: string[] = [];
+  for (const a of argv) {
+    if (a === "--files") scope = "files";
+    else if (a === "--commands") scope = "commands";
+    else if (a.startsWith("--")) {
+      log(`unknown flag "${a}" (--files | --commands)`);
+      return 1;
+    } else words.push(a);
+  }
+  const query = words.join(" ").trim();
+  if (!query) {
+    log('usage: vantage search <text> [--files | --commands]   e.g. vantage search "npm publish"');
+    return 1;
+  }
+  const cwd = process.cwd();
+  const results: SessionHits[] = [];
+  for (const ref of knownSessions(cwd)) {
+    const hit = searchSession(ref, readSessionEvents(ref.cwd, ref.sessionId), query, scope);
+    if (hit) results.push(hit);
+  }
+  process.stdout.write(renderSearch(results, { query, color: process.stdout.isTTY ?? false, width: process.stdout.columns }) + "\n");
+  return results.length ? 0 : 1;
+}
+
 async function cmdSessions(): Promise<number> {
   const cwd = process.cwd();
   const sessions = listSessions(cwd);
@@ -1037,6 +1065,9 @@ async function main(): Promise<void> {
       break;
     case "stats":
       process.exit(await cmdStats(rest));
+      break;
+    case "search":
+      process.exit(await cmdSearch(rest));
       break;
     case "replay":
       process.exit(await cmdReplay(rest));
