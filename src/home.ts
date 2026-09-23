@@ -117,6 +117,48 @@ export function knownSessions(cwd?: string): SessionRef[] {
   return [...seen.values()];
 }
 
+// Drops index entries whose log is gone (pruned, or the project deleted) and
+// duplicates. A session recorded while this runs is kept: the file is read
+// again right before it is replaced, and anything appended since is carried
+// over. Returns how many entries were dropped.
+export function compactSessionIndex(): number {
+  const file = sessionIndexPath();
+  let before: string;
+  try {
+    before = fs.readFileSync(file, "utf8");
+  } catch {
+    return 0;
+  }
+  const kept: string[] = [];
+  const seen = new Set<string>();
+  let dropped = 0;
+  for (const line of before.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const r = JSON.parse(line) as Partial<SessionRef>;
+      if (typeof r.cwd !== "string" || typeof r.sessionId !== "string") throw new Error("not a session");
+      const key = `${path.resolve(r.cwd)}|${r.sessionId}`;
+      if (seen.has(key) || !fs.existsSync(sessionEventsPath(r.cwd, r.sessionId))) throw new Error("gone");
+      seen.add(key);
+      kept.push(JSON.stringify({ cwd: r.cwd, sessionId: r.sessionId }));
+    } catch {
+      dropped++;
+    }
+  }
+  if (dropped === 0) return 0;
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    const now = fs.readFileSync(file, "utf8");
+    const appended = now.startsWith(before) ? now.slice(before.length).split("\n").filter((l) => l.trim()) : [];
+    fs.writeFileSync(tmp, [...kept, ...appended].map((l) => l + "\n").join(""));
+    fs.renameSync(tmp, file);
+    return dropped;
+  } catch {
+    fs.rmSync(tmp, { force: true });
+    return 0;
+  }
+}
+
 function statSignature(p: string): string {
   try {
     const s = fs.statSync(p);

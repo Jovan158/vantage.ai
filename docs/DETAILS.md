@@ -227,6 +227,15 @@ Auszüge werden gekürzt gespeichert und durch einen **Redaction-Pass** von offe
 sichtlichen Secrets/PII (E-Mails, API-Keys, Bearer-Token, JWTs) bereinigt, bevor
 sie in den Event-Log geschrieben werden (Konzept §6d).
 
+**Aufräumen.** Jede Session bleibt unter `.vantage/sessions/` liegen, bis man
+sie löscht. `vantage sessions prune` zeigt die Sessions dieses Projekts, in die
+seit 30 Tagen nichts mehr geschrieben wurde, samt Größe — gelöscht wird erst mit
+`--yes`. `--older-than 12h` / `2w` ändert das Alter, `--all` nimmt alle Projekte
+dieses Rechners dazu. Nie gelöscht werden laufende Sessions und isolierte
+Sessions, deren Worktree noch da ist (deren Branch wäre sonst ohne `vantage
+discard`). Der Index in `~/.vantage/sessions.jsonl` verliert dabei die Einträge,
+deren Protokoll nicht mehr existiert.
+
 ## ④ Git-Isolation
 
 **Git-Session-Isolation (Problem ④).** Mit `--isolate` läuft der Agent in einem
@@ -334,8 +343,18 @@ weiterer Agent ist additiv — kein Eingriff in den Kern.
 | `src/policy.ts` | Aktionstyp-Klassifizierung + Policy-Stufen (②) |
 | `src/hook.ts` | PreToolUse-Enforcement (ask/deny) über den Agent-Hook |
 | `src/budget.ts` | Budget-Wächter (`--max-cost` / `--max-quota`) |
+| `src/rules.ts` | Regeln für bestimmte Dateien und Befehle (`.vantage/policy.json`) |
+| `src/secrets.ts` | Erkennung versehentlich gesendeter Geheimnisse, mit Herkunft |
+| `src/home.ts` | `~/.vantage`: Session-Index, letzte Session, läuft eine Session noch? |
+| `src/stats.ts`, `src/search.ts` | `vantage stats` und `vantage search` über alle Sessions |
+| `src/doctor.ts` | `vantage doctor`: Prüfung der Einrichtung |
+| `src/terminal.ts` | Hält Ausgaben zurück, solange Claude Codes Chat-Oberfläche offen ist |
+| `src/resolve.ts` | Findet die ausführbare Datei des Agents (auch npm-`.cmd`-Shims unter Windows) |
 | `src/pricing.ts`, `src/pricing-source.ts`, `src/pricing-snapshot.ts` | Preise: Lookup, Parser der offiziellen Liste, generierter Stand |
 | `src/providers/` | Provider-Schicht (derzeit nur Anthropic) hinter einem Interface |
 | `src/agents/` | Agent-Adapter (derzeit nur Claude Code) |
-| `src/cli.ts` | Alle Befehle (`run`, `watch`, `replay`, `pricing`, …) |
+| `src/cli.ts` | Einstieg: Hilfe und Verteilung auf die Befehle |
+| `src/commands/` | Ein Modul je Befehl (`run`, `watch`, `sessions`, `pricing`, …) und die gemeinsame Terminal-Ausgabe |
+| `src/session-meta.ts` | Metadaten einer Session (Isolation, Working-Tree-Snapshots) |
+| `src/prune.ts` | `vantage sessions prune`: was gelöscht wird, was bleibt |
 | `spike/` | Ursprünglicher Wegwerf-Durchstich, der die Kernannahme bewies |

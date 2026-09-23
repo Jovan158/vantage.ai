@@ -29,7 +29,7 @@ function printHelp(): void {
       `  vantage run [--isolate] [--no-memory] [--max-cost <usd>] [--max-quota <percent>]\n` +
       `              <agent> [-- <agent args...>]\n` +
       `  vantage watch [sessionId]\n` +
-      `  vantage sessions\n` +
+      `  vantage sessions [prune [--older-than 30d] [--all] [--yes]]\n` +
       `  vantage stats [--days N]\n` +
       `  vantage search <text> [--files | --commands]\n` +
       `  vantage replay <sessionId>\n` +
@@ -61,7 +61,7 @@ function printHelp(): void {
 const COMMANDS: Record<string, (argv: string[]) => Promise<number>> = {
   run: (argv) => cmdRun(argv, ENTRY),
   watch: cmdWatch,
-  sessions: () => cmdSessions(),
+  sessions: cmdSessions,
   stats: cmdStats,
   search: cmdSearch,
   replay: cmdReplay,

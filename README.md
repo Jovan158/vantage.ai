@@ -64,7 +64,7 @@ numbers are in `vantage watch`; warnings are printed when Claude Code exits.
 | --- | --- |
 | `vantage run [options] claude [-- args]` | Start Claude Code through Vantage |
 | `vantage watch [id]` | Live view, from any directory: all running sessions side by side, or one in detail |
-| `vantage sessions` | List past sessions |
+| `vantage sessions` · `vantage sessions prune [--older-than 30d] [--all] [--yes]` | List past sessions · delete old ones (lists them first; `--yes` deletes) |
 | `vantage stats [--days N]` | Usage by day and project, and the largest sessions |
 | `vantage search <text> [--files \| --commands]` | Which session did what: messages, files, commands, blocks |
 | `vantage replay <id>` | Show a session as a timeline, from any directory |
