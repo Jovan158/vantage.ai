@@ -69,6 +69,26 @@ test("each finding says where it came from", () => {
   ]);
 });
 
+test("history already scanned is skipped; a new tool result still names its call", () => {
+  const seen = new Set<string>();
+  const first = {
+    messages: [
+      { role: "user", content: `please use ${GITHUB}` },
+      { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Read", input: { file_path: "/p/.env" } }] },
+    ],
+  };
+  assert.deepEqual(scanRequest(first, seen).map((f) => f.kind), ["GitHub token"]);
+  const second = {
+    messages: [
+      ...first.messages,
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: `AWS=${AWS}` }] },
+    ],
+  };
+  const where = scanRequest(second, seen).map((f: SecretFinding) => `${f.kind} <- ${f.source}`);
+  assert.deepEqual(where, ["AWS access key <- the output of Read /p/.env"]);
+  assert.deepEqual(scanRequest(second, seen), []);
+});
+
 test("the proxy reports findings with each request, and still forwards it unchanged", async () => {
   const mock = await startMockAnthropic();
   const seen: SecretFinding[] = [];

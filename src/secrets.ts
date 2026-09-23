@@ -109,12 +109,27 @@ function stringsOf(value: unknown, out: string[] = []): string[] {
 // Scans a parsed Messages API request and attributes each finding: the tool
 // call whose output carried it, your message, Claude's reply, or the system
 // prompt (where CLAUDE.md and injected memory live).
-export function scanRequest(body: unknown): SecretFinding[] {
+//
+// `seen` makes a long session cheap: every request repeats the whole
+// history, so parts already scanned (recognized by a hash of their text) are
+// skipped. The tool calls in them are still read, to name the source of a
+// later tool result.
+export function scanRequest(body: unknown, seen?: Set<string>): SecretFinding[] {
   if (!body || typeof body !== "object") return [];
   const req = body as { system?: unknown; messages?: Array<{ role?: string; content?: unknown }> };
   const found: SecretFinding[] = [];
-  found.push(...scanText(blockText(req.system), "the system prompt (CLAUDE.md, memory)"));
+  const fresh = (kind: string, text: string): boolean => {
+    if (!seen || !text) return true;
+    const key = createHash("sha1").update(kind).update("\0").update(text).digest("hex");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  };
+  const scan = (kind: string, text: string, source: string): void => {
+    if (fresh(kind, text)) found.push(...scanText(text, source));
+  };
 
+  scan("system", blockText(req.system), "the system prompt (CLAUDE.md, memory)");
   const calls = new Map<string, string>();
   for (const m of req.messages ?? []) {
     const blocks: Block[] = typeof m.content === "string" ? [{ type: "text", text: m.content }] : Array.isArray(m.content) ? (m.content as Block[]) : [];
@@ -124,11 +139,11 @@ export function scanRequest(body: unknown): SecretFinding[] {
         const target = toolTarget(b.input);
         const label = `${b.name ?? "tool"}${target ? ` ${target}` : ""}`;
         if (b.id) calls.set(b.id, label);
-        found.push(...scanText(stringsOf(b.input).join("\n"), `Claude's ${label} call`));
+        scan(`use:${b.id ?? ""}`, stringsOf(b.input).join("\n"), `Claude's ${label} call`);
       } else if (b.type === "tool_result") {
-        found.push(...scanText(blockText(b.content), `the output of ${calls.get(b.tool_use_id ?? "") ?? "a tool"}`));
+        scan(`result:${b.tool_use_id ?? ""}`, blockText(b.content), `the output of ${calls.get(b.tool_use_id ?? "") ?? "a tool"}`);
       } else if (typeof b.text === "string") {
-        found.push(...scanText(b.text, m.role === "assistant" ? "Claude's reply" : "your message"));
+        scan(`text:${m.role ?? ""}`, b.text, m.role === "assistant" ? "Claude's reply" : "your message");
       }
     }
   }

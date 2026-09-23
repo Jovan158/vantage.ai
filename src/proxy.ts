@@ -81,6 +81,8 @@ export interface RunningProxy {
 
 export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
   const log = opts.log ?? stderrLog;
+  // Conversation parts already scanned for secrets (see secrets.ts).
+  const scanned = new Set<string>();
   const upstreamUrl = new URL(opts.upstream);
   const transport = upstreamTransport(opts.upstream);
   const upstreamClient = transport.client;
@@ -140,7 +142,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     if (captureReq && opts.onRequest) {
       clientReq.on("end", () => {
         try {
-          opts.onRequest?.({ ...requestInfo(), secrets: scanRequest(body()) });
+          opts.onRequest?.({ ...requestInfo(), secrets: scanRequest(body(), scanned) });
         } catch {
           /* observation only; never break the request */
         }
