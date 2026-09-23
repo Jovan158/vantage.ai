@@ -64,7 +64,7 @@ a task that took a while, or nears a limit or budget.
 | `vantage review <id>` · `vantage discard <id>` | Show or discard an isolated session's changes |
 | `vantage memory init` · `add <category> <text>` · `show` | Manage project memory |
 | `vantage harvest [id]` | Suggest what to remember from a session |
-| `vantage policy` | Show the approval rules in effect |
+| `vantage policy` · `vantage policy init` | Show the rules in effect · create a starter rule file |
 | `vantage pricing` · `vantage pricing update` | Show prices · fetch the current official list |
 | `vantage demo` | Run the whole chain against a mock API (no account needed) |
 
@@ -79,15 +79,29 @@ Options for `run`:
 
 ## Configuration
 
-Approval rules live in `.vantage/policy.json`:
+Approval rules live in `.vantage/policy.json`. `vantage policy init` creates
+one with recommended rules.
 
 ```json
-{ "shell": "ask", "network": "deny" }
+{
+  "shell": "warn",
+  "network": "ask",
+  "files":    { ".env": "ask", "*.pem": "deny" },
+  "commands": { "git push*--force*": "ask", "npm publish*": "ask", "npm test*": "allow" }
+}
 ```
 
 Action types are `read`, `write`, `shell`, `network` and `other`. Levels are
 `allow`, `warn` (notice only), `ask` (Claude Code asks you) and `deny` (blocked).
 By default, `shell` and `network` are `warn` and everything else is `allow`.
+
+File and command rules override the action type when they match, and the
+strictest match wins. A file pattern without `/` matches the name anywhere,
+with `/` the path from the project root; `*` stays within a name, `**` spans
+directories. File rules also catch files named in shell commands (`cat .env`).
+Command patterns match each part of a command line (split at `&&`, `;`, `|`).
+Rules are guardrails, not a sandbox: a command assembled at run time can get
+past them.
 
 | Environment variable | Description |
 | --- | --- |

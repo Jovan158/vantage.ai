@@ -31,6 +31,7 @@ import { recordLastSession } from "./home.ts";
 import { collectHarvest, renderHarvest, worthHarvesting } from "./harvest.ts";
 import { compileMemory, initMemory, addNote, memoryDir } from "./memory.ts";
 import { loadPolicy, PolicyWatcher, needsEnforcement } from "./policy.ts";
+import { loadRules, policyFilePath, STARTER_POLICY } from "./rules.ts";
 import type { Policy } from "./policy.ts";
 import { runHook, hookSettings, hookInvocation, decisionRecord } from "./hook.ts";
 import { resolveCommand } from "./resolve.ts";
@@ -134,7 +135,7 @@ function printHelp(): void {
       `  vantage review <sessionId>\n` +
       `  vantage discard <sessionId>\n` +
       `  vantage memory <init|show|add <category> <text>>\n` +
-      `  vantage policy\n` +
+      `  vantage policy [init]\n` +
       `  vantage pricing [update|check]\n` +
       `  vantage demo\n` +
       `  vantage --help\n\n` +
@@ -216,6 +217,7 @@ async function cmdRun(argv: string[]): Promise<number> {
   const meter = new Meter();
   const quota = new QuotaWatcher(warnThreshold());
   const effectivePolicy = loadPolicy(cwd);
+  const rules = loadRules(policyFilePath(cwd));
   const policy = new PolicyWatcher(effectivePolicy);
   const guard = hasBudget(budget) ? new BudgetGuard(budget, budgetStatePath(sessionDir(cwd, sessionId))) : null;
 
@@ -332,18 +334,22 @@ async function cmdRun(argv: string[]): Promise<number> {
   // execution. Agents without a hook mechanism stay observe-only, said plainly.
   let finalArgs = agentArgs;
   const hookEnv: Record<string, string> = {};
-  if (needsEnforcement(effectivePolicy) || guard) {
+  const enforcingRules = rules.filter((r) => r.level === "ask" || r.level === "deny");
+  if (needsEnforcement(effectivePolicy) || enforcingRules.length > 0 || guard) {
     if (adapter.enforcementArgs) {
       const settingsFile = writeHookSettings(cwd, sessionId);
       finalArgs = [...adapter.enforcementArgs(settingsFile), ...finalArgs];
       // Pass the resolved policy explicitly: the hook runs with the agent's cwd
       // (a worktree under --isolate), which may not hold .vantage/policy.json.
       hookEnv.VANTAGE_POLICY = policyToEnv(effectivePolicy);
+      // Rules are read from the project's file, wherever the agent runs.
+      hookEnv.VANTAGE_POLICY_FILE = policyFilePath(cwd);
       const enforced = Object.entries(effectivePolicy)
         .filter(([, l]) => l === "ask" || l === "deny")
         .map(([t, l]) => `${t}:${l}`)
         .join(" ");
       if (enforced) log(`enforcing policy via ${adapter.id} PreToolUse hook — ${enforced}`);
+      if (enforcingRules.length) log(`enforcing ${enforcingRules.length} file/command rule(s) from .vantage/policy.json`);
       // The hook records what it blocks or asks about, so watch and replay
       // can show it next to the calls that went through.
       hookEnv.VANTAGE_EVENTS_FILE = eventLog.filePath;
@@ -693,7 +699,12 @@ async function cmdHook(): Promise<number> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
   const raw = Buffer.concat(chunks).toString("utf8");
-  const out = runHook(raw, loadPolicy(process.cwd()), readBudgetState(process.env.VANTAGE_BUDGET_FILE));
+  const out = runHook(
+    raw,
+    loadPolicy(process.cwd()),
+    readBudgetState(process.env.VANTAGE_BUDGET_FILE),
+    loadRules(process.env.VANTAGE_POLICY_FILE ?? policyFilePath(process.cwd()))
+  );
   if (out) process.stdout.write(out);
   // Best effort: a log that cannot be written must never change the decision.
   const record = decisionRecord(raw, out);
@@ -708,18 +719,42 @@ async function cmdHook(): Promise<number> {
   return 0; // the JSON decides; exit 0 with no JSON = no decision
 }
 
-async function cmdPolicy(): Promise<number> {
+async function cmdPolicy(argv: string[]): Promise<number> {
   const cwd = process.cwd();
+  const file = policyFilePath(cwd);
+  if (argv[0] === "init") {
+    if (fs.existsSync(file)) {
+      log(`${path.relative(cwd, file)} already exists — left unchanged`);
+      return 1;
+    }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(STARTER_POLICY, null, 2) + "\n");
+    log(`created ${path.relative(cwd, file)} with recommended rules — edit it to fit your project`);
+  } else if (argv[0]) {
+    log(`unknown policy command "${argv[0]}" (show | init)`);
+    return 1;
+  }
+
+  const color = (level: string): string =>
+    (level === "deny" ? "\x1b[31m" : level === "ask" || level === "warn" ? "\x1b[33m" : "") + level + "\x1b[0m";
   const policy = loadPolicy(cwd);
-  log("action-type policy — allow · warn (notice only) · ask (approval) · deny (blocked):");
+  log("by action type — allow · warn (notice only) · ask (approval) · deny (blocked):");
   for (const [type, level] of Object.entries(policy)) {
-    const color = level === "deny" ? "\x1b[31m" : level === "ask" || level === "warn" ? "\x1b[33m" : "";
-    process.stdout.write(`  ${type.padEnd(8)} ${color}${level}\x1b[0m\n`);
+    process.stdout.write(`  ${type.padEnd(8)} ${color(level)}\n`);
   }
-  if (needsEnforcement(policy)) {
-    log("ask/deny are enforced through the agent's PreToolUse hook (agents without hooks stay observe-only)");
+  const rules = loadRules(file);
+  for (const kind of ["file", "command"] as const) {
+    const list = rules.filter((r) => r.kind === kind);
+    if (!list.length) continue;
+    log(`${kind} rules — override the action type when they match; the strictest match wins:`);
+    const width = Math.max(...list.map((r) => r.pattern.length));
+    for (const r of list) process.stdout.write(`  ${r.pattern.padEnd(width)}  ${color(r.level)}\n`);
   }
-  log("configure via .vantage/policy.json or VANTAGE_POLICY=\"shell:deny,network:ask\"");
+  if (needsEnforcement(policy) || rules.some((r) => r.level === "ask" || r.level === "deny")) {
+    log("ask/deny are enforced through Claude Code's PreToolUse hook");
+  }
+  if (!rules.length) log("no file or command rules yet — `vantage policy init` creates a starter set");
+  log("configure in .vantage/policy.json (VANTAGE_POLICY=\"shell:deny,network:ask\" overrides action types)");
   return 0;
 }
 
@@ -902,7 +937,7 @@ async function main(): Promise<void> {
       process.exit(await cmdMemory(rest));
       break;
     case "policy":
-      process.exit(await cmdPolicy());
+      process.exit(await cmdPolicy(rest));
       break;
     case "pricing":
       process.exit(await cmdPricing(rest));

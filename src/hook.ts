@@ -18,6 +18,7 @@ import type { ActionType, Policy } from "./policy.ts";
 import type { BudgetState } from "./budget.ts";
 import type { DecisionEvent } from "./events.ts";
 import { toolTarget } from "./turn.ts";
+import { matchRules, type Rule } from "./rules.ts";
 
 export interface HookInput {
   tool_name?: string;
@@ -48,11 +49,20 @@ export interface Verdict {
 // and emitting an explicit "allow" would override the user's own permission
 // rules — Vantage should never widen access, only narrow it.
 //
-// A reached budget (src/budget.ts) turns those into "ask": every action then
-// needs the user's approval. deny stays deny.
-export function decide(toolName: string, policy: Policy, budget: BudgetState | null = null): Verdict {
+// A rule for this file or command (src/rules.ts) overrides the action-type
+// level. A reached budget (src/budget.ts) then turns allow/warn into "ask":
+// every action needs the user's approval. deny stays deny.
+export interface DecideContext {
+  input?: Record<string, unknown>;
+  rules?: Rule[];
+  /** Project root, for rules written as paths from it. */
+  cwd?: string;
+}
+
+export function decide(toolName: string, policy: Policy, budget: BudgetState | null = null, ctx: DecideContext = {}): Verdict {
   const type = classifyTool(toolName);
-  const level = policy[type];
+  const match = matchRules(ctx.input, ctx.rules ?? [], ctx.cwd);
+  const level = match ? match.level : policy[type];
   if (budget && (level === "allow" || level === "warn")) {
     return {
       type,
@@ -60,18 +70,23 @@ export function decide(toolName: string, policy: Policy, budget: BudgetState | n
       reason: `Vantage budget reached: ${budget.reason}. Approve to continue (tool: ${toolName}).`,
     };
   }
+  const rule = match ? `Vantage rule "${match.rule.pattern}" (${match.rule.kind}s in .vantage/policy.json)` : null;
   switch (level) {
     case "deny":
       return {
         type,
         decision: "deny",
-        reason: `Blocked by Vantage policy: ${type} actions are set to 'deny' (tool: ${toolName}). Change it with VANTAGE_POLICY or .vantage/policy.json.`,
+        reason: rule
+          ? `Blocked by ${rule} (tool: ${toolName}).`
+          : `Blocked by Vantage policy: ${type} actions are set to 'deny' (tool: ${toolName}). Change it with VANTAGE_POLICY or .vantage/policy.json.`,
       };
     case "ask":
       return {
         type,
         decision: "ask",
-        reason: `Vantage policy requires approval for ${type} actions (tool: ${toolName}).`,
+        reason: rule
+          ? `${rule} requires your approval (tool: ${toolName}).`
+          : `Vantage policy requires approval for ${type} actions (tool: ${toolName}).`,
       };
     default:
       return { type, decision: null, reason: "" };
@@ -100,11 +115,11 @@ export function parseHookInput(raw: string): HookInput | null {
 
 // Whole hook run as one pure step: raw stdin -> stdout text (or "" for no
 // decision). Unparseable input yields no decision rather than blocking work.
-export function runHook(rawInput: string, policy: Policy, budget: BudgetState | null = null): string {
+export function runHook(rawInput: string, policy: Policy, budget: BudgetState | null = null, rules: Rule[] = []): string {
   const input = parseHookInput(rawInput);
   const tool = input?.tool_name;
   if (!tool) return "";
-  const output = buildOutput(decide(tool, policy, budget));
+  const output = buildOutput(decide(tool, policy, budget, { input: input.tool_input, rules, cwd: input.cwd }));
   return output ? JSON.stringify(output) : "";
 }
 
