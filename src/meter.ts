@@ -19,6 +19,8 @@ export interface MeterTotals {
   costUsd: number;
   /** Requests whose model had no known price (not included in costUsd). */
   unpriced: number;
+  /** The models behind `unpriced`, for the session-end hint. */
+  unpricedModels: string[];
 }
 
 export class Meter {
@@ -30,6 +32,7 @@ export class Meter {
     cacheWrite: 0,
     costUsd: 0,
     unpriced: 0,
+    unpricedModels: [],
   };
   // (timestampMs, cumulativeOutput) samples for a rolling rate.
   private samples: Array<[number, number]> = [];
@@ -50,8 +53,13 @@ export class Meter {
     this.totals.output += e.out;
     this.totals.cacheRead += e.cache_read;
     this.totals.cacheWrite += e.cache_write;
-    if (e.cost_usd === null) this.totals.unpriced += 1;
-    else this.totals.costUsd += e.cost_usd;
+    if (e.cost_usd === null) {
+      this.totals.unpriced += 1;
+      const model = e.model ?? "unknown model";
+      if (!this.totals.unpricedModels.includes(model)) this.totals.unpricedModels.push(model);
+    } else {
+      this.totals.costUsd += e.cost_usd;
+    }
 
     this.samples.push([nowMs, this.totals.output]);
     const cutoff = nowMs - this.windowMs;
@@ -61,7 +69,7 @@ export class Meter {
   }
 
   snapshot(): MeterTotals {
-    return { ...this.totals };
+    return { ...this.totals, unpricedModels: [...this.totals.unpricedModels] };
   }
 
   // Output tokens per minute over the trailing window.

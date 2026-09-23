@@ -4,11 +4,18 @@
 // Run:  npm test   (node --experimental-strip-types --test test/*.test.ts)
 
 import { test } from "node:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { startMockAnthropic, EXPECTED_USAGE } from "../src/dev/mock-anthropic.ts";
 import { startProxy } from "../src/proxy.ts";
 import type { UsageEvent } from "../src/events.ts";
+
+// Price against the bundled list only, never this machine's
+// `vantage pricing update` file.
+process.env.VANTAGE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "vantage-home-"));
 
 function postThroughProxy(
   proxyUrl: string

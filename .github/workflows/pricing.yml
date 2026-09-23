@@ -1,0 +1,27 @@
+name: Pricing drift
+
+# The bundled price list (src/pricing-snapshot.ts) is generated from
+# Anthropic's official pricing page. This checks weekly that it still matches,
+# so a price change or a new model is noticed without anyone watching the
+# page. On failure: `npm run pricing:snapshot`, review the diff, commit.
+# The same check fails loudly if the page format changes and no longer parses.
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
+      # No install needed: vantage has no runtime dependencies and runs the
+      # TypeScript source directly in a checkout.
+      - name: Compare the official price list with the bundled one
+        run: node bin/vantage.mjs pricing check

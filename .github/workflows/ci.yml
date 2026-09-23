@@ -72,5 +72,7 @@ jobs:
           cd /tmp/consumer
           ./node_modules/.bin/vantage --help
           ./node_modules/.bin/vantage policy
+          # The generated price list must ship in the build.
+          ./node_modules/.bin/vantage pricing | grep -q claude-opus-5-5
           # Full proxy chain against the bundled mock upstream — no API key.
           ./node_modules/.bin/vantage demo

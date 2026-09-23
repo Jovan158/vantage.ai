@@ -2,9 +2,16 @@
 // 5m/1h cache-write split, and "price unknown" instead of guessing.
 
 import { test } from "node:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import assert from "node:assert/strict";
 import { estimateCostUsd, priceFor, normalizeModelId, formatCost } from "../src/pricing.ts";
 import type { TokenUsage } from "../src/usage.ts";
+
+// Price against the bundled list only, never this machine's
+// `vantage pricing update` file.
+process.env.VANTAGE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "vantage-home-"));
 
 const usage = (model: string | null, over: Partial<TokenUsage> = {}): TokenUsage => ({
   model,

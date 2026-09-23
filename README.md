@@ -33,13 +33,41 @@ was Claude Code real zurückgibt — 5h-/7d-Auslastung + Reset) und die **klassi
 Per-Key-Buckets** (API-Key-Billing — requests/tokens remaining). Genau der
 Abo-Quota-Fall, den reine Token-Zählung nicht abbilden kann.
 
-**Kosten sind eine Schätzung zu API-Listenpreisen** (`src/pricing.ts`, Quelle und
-Abrufdatum im Datei-Kopf): exakter Lookup pro Modell-ID, Cache-Writes getrennt
-nach 5-Minuten- und 1-Stunden-TTL. Unbekannte Modelle werden als `price unknown`
-ausgewiesen statt geraten — Tokens werden trotzdem gezählt. Im Abo ist der
-Dollarbetrag nur ein API-Äquivalent; das echte Signal ist die Quota-Zeile. (Die
-Beispielausgaben in diesem README stammen aus früheren Läufen; die Beträge darin
-sind illustrativ.)
+**Kosten sind eine Schätzung zu API-Listenpreisen:** exakter Lookup pro
+Modell-ID, Cache-Writes getrennt nach 5-Minuten- und 1-Stunden-TTL. Unbekannte
+Modelle werden als `price unknown` ausgewiesen statt geraten — Tokens werden
+trotzdem gezählt. Im Abo ist der Dollarbetrag nur ein API-Äquivalent; das echte
+Signal ist die Quota-Zeile. (Die Beispielausgaben in diesem README stammen aus
+früheren Läufen; die Beträge darin sind illustrativ.)
+
+**Woher die Preise kommen.** Keine Zahl ist von Hand eingetippt. Die einzige
+Quelle ist Anthropics offizielle Preisseite in ihrer Markdown-Form
+(`…/pricing.md`), gelesen von *einem* Parser (`src/pricing-source.ts`):
+
+```
+offizielle Preisseite ─► Parser ─┬─► src/pricing-snapshot.ts   generiert, wird mit Vantage ausgeliefert
+                                 └─► ~/.vantage/pricing.json    `vantage pricing update`
+```
+
+- `vantage pricing` zeigt die aktiven Preise, ihren Stand und ihre Quelle.
+- `vantage pricing update` holt die aktuelle Liste — **nur auf diesen Befehl hin**.
+  Vantage lädt nie selbstständig etwas nach; ein Meter, der unaufgefordert
+  Traffic erzeugt, widerspräche seinem Zweck.
+- Beim Zusammenführen gewinnt pro Modell die **neuere** Quelle: ein frisches
+  Update schlägt ein altes Release, ein neues Release ein altes Update.
+- Der Parser ist streng: Spalten per Überschrift statt Position, jeder Preis
+  muss `$X / MTok` lauten, jede Zeile eine Plausibilitätsprüfung bestehen
+  (Cache-Read < Input < 5m-Write < 1h-Write, Output > Input — fängt vertauschte
+  Spalten). Ändert sich das Seitenformat, gibt es einen Fehler und nichts wird
+  geschrieben — nie falsche Zahlen im Meter.
+- Taucht ein Modell ohne Preis auf oder ist die Liste älter als 60 Tage, sagt
+  das Session-Ende es mit einer Zeile.
+- Ein wöchentlicher CI-Job (`Pricing drift`) vergleicht die ausgelieferte
+  Liste mit der offiziellen und schlägt bei Abweichung fehl; behoben wird mit
+  `npm run pricing:snapshot` und Commit.
+
+Nur Anthropic veröffentlicht eine so lesbare Liste; OpenAI-basierte Agents
+bleiben bei `price unknown`.
 
 Bei Annäherung ans Limit warnt Vantage auffällig — **einmalig** beim Überschreiten
 der Schwelle (kein Spam), re-armiert nach Reset, und meldet akute Fälle
