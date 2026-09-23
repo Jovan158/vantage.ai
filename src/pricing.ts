@@ -201,13 +201,14 @@ export function estimateCostUsd(usage: TokenUsage): number | null {
   );
 }
 
-// One cost label for every view. `unpriced` counts requests whose model had
-// no known price; their cost is NOT in `knownUsd`, and the label says so.
+// One cost label for every view. The "~" marks it as an estimate.
+// `unpriced` counts requests whose model had no known price; their cost is
+// NOT in `knownUsd`, and the label says so.
 export function formatCost(knownUsd: number, unpriced: number, requests: number): string {
   if (requests > 0 && unpriced >= requests) return "cost n/a (price unknown)";
   const base = `~$${knownUsd.toFixed(4)}`;
-  if (unpriced > 0) return `${base} (estimated, ${unpriced} request(s) unpriced)`;
-  return `${base} (estimated)`;
+  if (unpriced > 0) return `${base} (${unpriced} request(s) unpriced)`;
+  return base;
 }
 
 // ---------------------------------------------------------------------------

@@ -73,8 +73,8 @@ test("unknown models have no price — never a guessed one", () => {
 });
 
 test("cost label states what is and is not priced", () => {
-  assert.equal(formatCost(0.387, 0, 1), "~$0.3870 (estimated)");
+  assert.equal(formatCost(0.387, 0, 1), "~$0.3870");
   assert.equal(formatCost(0, 2, 2), "cost n/a (price unknown)");
-  assert.equal(formatCost(0.1, 1, 3), "~$0.1000 (estimated, 1 request(s) unpriced)");
-  assert.equal(formatCost(0, 0, 0), "~$0.0000 (estimated)");
+  assert.equal(formatCost(0.1, 1, 3), "~$0.1000 (1 request(s) unpriced)");
+  assert.equal(formatCost(0, 0, 0), "~$0.0000");
 });

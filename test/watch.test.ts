@@ -49,10 +49,9 @@ test("live view: status, limits with reset, session numbers, latest exchange, ac
   assert.match(out, /Claude replied\. 27s ago/);
   assert.match(out, /5-hour\s+█{8}░{12}\s+42%\s+resets \d\d:\d\d \(in 2h\)/);
   assert.match(out, /1 message\(s\) from you\s+→\s+1 model call\(s\), 2 tool call\(s\)/);
-  assert.match(out, /~\$0\.0310 \(estimated\)\s+API-equivalent/);
+  assert.match(out, /~\$0\.0310\s+API-equivalent/);
   assert.match(out, /context\s+52k tokens sent with the last message/);
-  assert.match(out, /you\s+add a retry to the fetch helper/);
-  assert.match(out, /claude\s+I'll add exponential backoff\./);
+  assert.doesNotMatch(out, /Latest|add a retry to the fetch helper/, "the conversation is in Claude Code, not here");
   assert.match(out, /Activity · read×1 · write×1/);
   assert.match(out, /Ctrl-C stops watching — Claude keeps running/);
   assert.doesNotMatch(out, /\x1b\[/, "no ANSI when color is off");
@@ -203,7 +202,6 @@ test("latest turn skips the agent's background calls; totals still count them", 
     },
   ];
   const frame = renderLive(withBackground, { sessionId: "s1", nowMs: NOW, color: false });
-  assert.match(frame, /you\s+add a retry to the fetch helper/);
   assert.doesNotMatch(frame, /Current state/);
   assert.match(frame, /1 model call\(s\)/); // one chat turn…
   assert.match(frame, /~\$0\.0320/); // …but both requests are in the cost

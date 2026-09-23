@@ -101,7 +101,8 @@ function describeCalls(e: Usage, project: string | undefined): string {
 
 // One frame of the live view. Pure: same inputs, same string. Every line
 // answers something you want to know mid-session: what is Claude doing, will
-// my limit hold, what did it touch, what does it cost.
+// my limit hold, what did it touch, what does it cost. The conversation
+// itself is in Claude Code's own window, and in `vantage replay`.
 export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
   const c = opts.color === false ? noColor() : C;
   const now = opts.nowMs ?? Date.now();
@@ -262,15 +263,6 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
       `  ${c.dim}context${c.reset}  ${c.bold}${fmtTokens(context)}${c.reset} tokens sent with the last message` +
         (allInput ? `${c.dim}  ·  ${Math.round((cached / allInput) * 100)}% of all input came from cache${c.reset}` : "")
     );
-  }
-
-  // --- The conversation, latest exchange.
-  if (lastTurn) {
-    section("Latest");
-    const room = width - 10;
-    lines.push(`  ${c.dim}you${c.reset}     ${lastTurn.prompt ? fit(lastTurn.prompt, room) : `${c.dim}(not captured)${c.reset}`}`);
-    const reply = lastTurn.text ? fit(lastTurn.text, room * 2) : lastTurn.stopReason === "tool_use" ? `${c.dim}(went straight to tools)${c.reset}` : "";
-    if (reply) lines.push(`  ${c.dim}claude${c.reset}  ${reply}`);
   }
 
   // --- Activity: what Claude did, with what it touched, and what was stopped.

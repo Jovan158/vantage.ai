@@ -13,7 +13,7 @@ der beobachteten Kopie und Metering von Streaming- *und* JSON-Antworten. Zusätz
 liest der Proxy die **Rate-Limit-Header** aus und zeigt eine echte Limit-Prognose:
 
 ```
-[vantage] session end · 2 request(s) · in 66 · out 45 · cache 66414 · ~$0.0208 (estimated)
+[vantage] session end · 2 request(s) · in 66 · out 45 · cache 66414 · ~$0.0208
 [vantage] quota 5h 53% used reset 1h50m · 7d 6% used reset 156h50m
 ```
 
@@ -84,7 +84,7 @@ aus der Policy bleibt `deny`. Ein Kosten-Budget bleibt für die Session erreicht
 zurückgesetzt ist.
 
 ```
-[vantage] ALERT: budget reached — session cost ~$2.03 (estimated) reached the $2.00 budget. Every action now needs your approval.
+[vantage] ALERT: budget reached — session cost ~$2.03 reached the $2.00 budget. Every action now needs your approval.
 ```
 
 Umsetzung: Der Hook ist bei Claude Code ein eigener Prozess pro Tool-Aufruf und
@@ -159,13 +159,9 @@ Limits
 
 This session
   work     1 message(s) from you  →  3 model call(s), 4 tool call(s)
-  cost     ~$0.2000 (estimated)  API-equivalent; on your subscription the limits above count
+  cost     ~$0.2000  API-equivalent; on your subscription the limits above count
   budget   █░░░░░░░░░ 10% of $2
   context  64k tokens sent with the last message  ·  90% of all input came from cache
-
-Latest
-  you     Füge einen Retry mit exponentiellem Backoff zum fetch-Helper hinzu und teste es
-  claude  Jetzt die Tests laufen lassen.
 
 Activity · read×2 · write×1 · shell×1 · 1 file(s) edited
   14:00:09          Read      src/net/fetch.ts
@@ -217,7 +213,7 @@ session start · agent claude-code
          tools:  Write
  +4.3s turn 2 claude-sonnet-5 · in 2 · out 21 · cache 61k · $0.0193
          reply:  Created poem.txt with a two-line poem about the sea.
- +6.0s session end · 3 turn(s) · in 98 · out 232 · cache 122k · ~$0.0609 (estimated) · exit 0
+ +6.0s session end · 3 turn(s) · in 98 · out 232 · cache 122k · ~$0.0609 · exit 0
 ```
 
 So sieht man, **was** der Agent über mehrere Schritte vorhatte. Prompt-/Antwort-
@@ -263,7 +259,7 @@ das Material auf und schlägt einen fertigen Befehl vor:
 
 ```
 harvest · session 2026-09-18T11-31-28-722Z_0k4i
-3 turn(s) · ~$0.0604 (estimated) · write×1
+3 turn(s) · ~$0.0604 · write×1
 
   what the agent said it did
     Created notes.txt containing "HARVEST".
