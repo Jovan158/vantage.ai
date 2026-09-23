@@ -1,15 +1,16 @@
-// Provider registry — the seam that makes Vantage genuinely multi-agent.
+// Provider registry. Vantage currently supports Claude Code only, so there is
+// one provider: Anthropic.
 //
 // Everything above this layer (meter, event log, replay, policy, quota) works on
 // the normalised TurnContent shape. A provider only has to say which request
-// paths carry a turn and how to parse that provider's streaming/JSON responses.
-// Adding a provider is therefore additive: no core changes.
+// paths carry a turn and how to parse that provider's streaming/JSON responses,
+// so supporting another agent later is additive: no core changes. (An OpenAI
+// provider for Codex CLI and Aider existed and was removed — see git history.)
 
 import type { TurnContent, TurnExtractor } from "../turn.ts";
 import { createTurnExtractor, extractTurnFromJson } from "../turn.ts";
-import { createOpenAITurnExtractor, extractOpenAITurnFromJson } from "./openai.ts";
 
-export type ProviderName = "anthropic" | "openai";
+export type ProviderName = "anthropic";
 
 export interface Provider {
   name: ProviderName;
@@ -26,15 +27,7 @@ const anthropic: Provider = {
   extractTurnFromJson,
 };
 
-const openai: Provider = {
-  name: "openai",
-  isObservablePath: (p) =>
-    p.includes("/chat/completions") || p.includes("/v1/responses") || p.includes("/v1/completions"),
-  createTurnExtractor: createOpenAITurnExtractor,
-  extractTurnFromJson: extractOpenAITurnFromJson,
-};
-
-const PROVIDERS: Record<ProviderName, Provider> = { anthropic, openai };
+const PROVIDERS: Record<ProviderName, Provider> = { anthropic };
 
 export function getProvider(name: ProviderName): Provider {
   return PROVIDERS[name];

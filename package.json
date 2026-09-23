@@ -1,7 +1,7 @@
 {
   "name": "vantagedev",
   "version": "0.0.1",
-  "description": "Control & transparency layer over AI-coding CLI agents (Claude Code, Codex, Aider, ...)",
+  "description": "Control & transparency layer for Claude Code: live cost and quota, action approvals, session replay, isolation, project memory",
   "type": "module",
   "bin": {
     "vantage": "bin/vantage.mjs"
@@ -30,8 +30,6 @@
     "ai",
     "cli",
     "claude-code",
-    "codex",
-    "aider",
     "proxy",
     "observability",
     "tokens",

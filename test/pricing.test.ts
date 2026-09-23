@@ -67,7 +67,7 @@ test("dated snapshot IDs and context tags resolve to the base model", () => {
 
 test("unknown models have no price — never a guessed one", () => {
   assert.equal(priceFor("claude-opus-9"), null);
-  assert.equal(priceFor("gpt-4o"), null); // OpenAI prices are not verified
+  assert.equal(priceFor("some-gateway-model"), null);
   assert.equal(priceFor(null), null);
   assert.equal(estimateCostUsd(usage("claude-opus-9", { input_tokens: 1000 })), null);
 });

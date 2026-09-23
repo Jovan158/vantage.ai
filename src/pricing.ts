@@ -21,8 +21,7 @@
 // Not modelled: fast mode, the 1.1x US-only inference multiplier, batch.
 // Under a subscription (Pro/Max) no per-token cost applies at all — the
 // estimate is what the same traffic would cost on the API; the quota line is
-// the real signal there (CONCEPT.md §6a). Only Anthropic publishes a list in
-// a form Vantage reads, so OpenAI-based agents show "price unknown".
+// the real signal there (CONCEPT.md §6a).
 
 import fs from "node:fs";
 import os from "node:os";
@@ -230,7 +229,7 @@ export function pricingHints(unpricedModels: string[], prices = activePrices(), 
     hints.push(`no price for ${claude.join(", ")} — \`vantage pricing update\` fetches the current official list`);
   }
   if (other.length) {
-    hints.push(`no price source for ${other.join(", ")} (only Anthropic's official list is supported) — tokens are still metered`);
+    hints.push(`no price for ${other.join(", ")} (not on Anthropic's price list) — tokens are still metered`);
   }
   const ageDays = Math.floor((nowMs - Date.parse(prices.asOf)) / 86_400_000);
   if (ageDays >= STALE_AFTER_DAYS) {

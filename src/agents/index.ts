@@ -48,22 +48,12 @@ const claudeCode: AgentAdapter = {
   },
 };
 
-// Codex CLI / Aider talk to the OpenAI-compatible endpoint via OPENAI_BASE_URL.
-const openaiCompatible = (id: string, command: string): AgentAdapter => ({
-  id,
-  command,
-  defaultUpstream: "https://api.openai.com",
-  provider: "openai",
-  proxyEnv(proxyUrl: string): Record<string, string> {
-    return { OPENAI_BASE_URL: proxyUrl, OPENAI_API_BASE: proxyUrl };
-  },
-});
-
+// Claude Code only, for now. Adapters for Codex CLI and Aider existed but were
+// metering-only and never tested against the real tools, so they were removed
+// rather than shipped half-done.
 const ADAPTERS: Record<string, AgentAdapter> = {
   claude: claudeCode,
   "claude-code": claudeCode,
-  codex: openaiCompatible("codex", "codex"),
-  aider: openaiCompatible("aider", "aider"),
 };
 
 export function resolveAdapter(name: string): AgentAdapter | undefined {

@@ -5,7 +5,8 @@
 > Gemini CLI …) sieht und steuert. Aufruf im Folgenden: `vantage run <agent>`.
 
 Status: **umgesetzt** — alle fünf Probleme haben Funktionalität, an echtem Traffic
-verifiziert. Umsetzungsstand, bewusste Abweichungen vom Konzept und offene Punkte:
+verifiziert. **Unterstützt wird derzeit nur Claude Code**; Codex CLI, Aider und
+Gemini CLI bleiben Konzept (siehe unten). Umsetzungsstand, bewusste Abweichungen vom Konzept und offene Punkte:
 [§7](#7-nächste-schritte--prototyp). Bedienung: [README](../README.md).
 
 > Die Abschnitte §1–§6 sind das ursprüngliche Konzept und bleiben als
@@ -277,8 +278,11 @@ Drei Entscheidungen fielen bewusst anders als oben skizziert:
    Agent-UI, null Abhängigkeiten.
 
 Zusätzlich über das ursprüngliche Konzept hinaus: eine **Provider-Schicht**
-(Anthropic + OpenAI) hinter einem Interface — der Proxy war sonst faktisch
-Anthropic-only, was der Multi-Agent-These widersprochen hätte.
+hinter einem Interface, damit weitere Agents additiv hinzukommen können. Eine
+OpenAI-Anbindung für Codex CLI und Aider war umgesetzt, wurde aber wieder
+entfernt: sie konnte nur messen (keine Freigaben, kein Gedächtnis, keine Preise)
+und war nie gegen die echten Tools getestet. Der Fokus liegt vorerst vollständig
+auf Claude Code.
 
 ### Enforcement: warum native Hooks und nicht der Proxy
 

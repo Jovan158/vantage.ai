@@ -2,7 +2,7 @@
 //
 // On Linux/macOS, spawn() searches PATH itself, so nothing is needed. On
 // Windows it only finds real executables (.exe/.com). Agents installed through
-// npm — Claude Code, Codex CLI — are exposed as `claude.cmd` shims, which Node
+// npm — Claude Code among them — are exposed as `claude.cmd` shims, which Node
 // refuses to spawn without `shell: true`. Using a shell is not an option here:
 // the agent's arguments include the user's prompt and the injected project
 // memory, and cmd.exe would interpret quotes, `&`, `|`, `%` in that text.

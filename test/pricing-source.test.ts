@@ -134,13 +134,13 @@ test("an invalid price file is ignored with a reason; the bundled list is used",
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("hints: update for unknown Claude models, honesty for others, age", () => {
+test("hints: update for unknown Claude models, a plain note for others, age", () => {
   const p = loadActivePrices(table("2026-09-01T00:00:00Z", { a: entry(1) }), "/nonexistent/pricing.json");
   const now = Date.parse("2026-09-10T00:00:00Z");
   assert.deepEqual(pricingHints([], p, now), []);
-  const hints = pricingHints(["claude-opus-9", "gpt-4o"], p, now);
+  const hints = pricingHints(["claude-opus-9", "some-gateway-model"], p, now);
   assert.match(hints[0]!, /claude-opus-9.*vantage pricing update/);
-  assert.match(hints[1]!, /gpt-4o.*only Anthropic/);
+  assert.match(hints[1]!, /some-gateway-model.*not on Anthropic's price list/);
   assert.match(pricingHints([], p, Date.parse("2026-12-01T00:00:00Z"))[0]!, /91 days old/);
 });
 

@@ -8,9 +8,10 @@ AI that creates software on its own
 
 ## Vantage — Kontroll- & Transparenzschicht für AI-Coding-CLIs
 
-Vantage legt sich als Wrapper über bestehende AI-Coding-Agents (Claude Code,
-Codex CLI, Aider, …) und behebt deren bekannteste Schwachstellen — ohne die
-Agents nachzubauen. Vollständiges Konzept: [`docs/CONCEPT.md`](docs/CONCEPT.md).
+Vantage legt sich als Wrapper über **Claude Code** und behebt dessen bekannteste
+Schwachstellen — ohne den Agent nachzubauen. Derzeit wird bewusst nur Claude
+Code unterstützt; die Architektur (Provider-Schicht, Agent-Adapter) lässt weitere
+Agents später additiv zu. Vollständiges Konzept: [`docs/CONCEPT.md`](docs/CONCEPT.md).
 
 **MVP-Prototyp:** Live-Token-/Cost-Meter auf Proxy-Basis.
 Ein lokaler, transparenter Streaming-Proxy leitet den API-Traffic byte-genau
@@ -66,9 +67,6 @@ offizielle Preisseite ─► Parser ─┬─► src/pricing-snapshot.ts   gener
   Liste mit der offiziellen und schlägt bei Abweichung fehl; behoben wird mit
   `npm run pricing:snapshot` und Commit.
 
-Nur Anthropic veröffentlicht eine so lesbare Liste; OpenAI-basierte Agents
-bleiben bei `price unknown`.
-
 Bei Annäherung ans Limit warnt Vantage auffällig — **einmalig** beim Überschreiten
 der Schwelle (kein Spam), re-armiert nach Reset, und meldet akute Fälle
 (`rejected`, `retry-after`) sofort:
@@ -111,7 +109,7 @@ Type-Stripping zurück.
 ```bash
 # Aus dem Checkout entwickeln
 npm install          # nur TypeScript + @types/node (keine Laufzeit-Deps)
-npm test             # 69 Tests (2 davon nur unter Windows)
+npm test             # 85 Tests (2 davon nur unter Windows)
 npm run typecheck    # tsc --noEmit über src + test
 npm run build        # -> dist/
 npm pack             # baut via prepack und schnürt das Tarball
@@ -136,7 +134,7 @@ vantage run claude
 ### Ausprobieren (Node ≥ 22.6, keine Installation nötig)
 
 ```bash
-npm test          # 69 Tests: Proxy-Transparenz & Resilienz, Usage (Anthropic+OpenAI),
+npm test          # 85 Tests: Proxy-Transparenz & Resilienz, Usage, Preisliste,
                   # Rate-Limit, Quota, Git-Isolation, Replay, Watch, Memory, Policy
 npm run demo      # komplette Kette gegen einen Mock-Upstream (kein API-Key nötig)
 
@@ -152,6 +150,7 @@ node bin/vantage.mjs harvest [sessionId]                # Memory-Vorschlag aus S
 node bin/vantage.mjs memory init                        # Projektgedächtnis anlegen
 node bin/vantage.mjs memory add decisions "..."         # Entscheid festhalten
 node bin/vantage.mjs policy                              # Aktionstyp-Policy ansehen
+node bin/vantage.mjs pricing [update]                   # Preisliste ansehen / aktualisieren
 ```
 
 **Projektgedächtnis (Problem ⑤).** Dateibasiert unter `.vantage/memory/*.md`
@@ -279,20 +278,15 @@ sie in den Event-Log geschrieben werden (Konzept §6d).
 → Proxy → Live-Meter → Event-Log. Läuft dank Nodes Type-Stripping ohne
 Build-Schritt; ein `dist/`-Build (`npm run build`) ist der Distributionspfad.
 
-**Wirklich Multi-Agent, nicht nur Anthropic.** Die Kernthese des Projekts ist ein
-Layer über *mehreren* Agents — deshalb sitzt hinter dem Proxy eine Provider-Schicht:
-ein Provider sagt nur, welche Pfade einen Turn tragen und wie sein Streaming-/
-JSON-Format zu parsen ist. Alles darüber (Meter, Event-Log, Replay, Policy, Quota)
-arbeitet auf einer normalisierten Form und bleibt unverändert:
-
-| Provider | Agents | Format |
-|---|---|---|
-| `anthropic` | Claude Code | `/v1/messages`, SSE `message_start`/`message_delta` |
-| `openai` | Codex CLI, Aider, OpenAI-kompatible | `/v1/chat/completions`, `choices[].delta`, `usage` |
-
-Ein neuer Anbieter ist damit **additiv** — kein Eingriff in den Kern. Die komplette
-OpenAI-Kette (Byte-Transparenz, Usage, Prompt/Antwort, Kosten) ist durch den echten
-Proxy getestet, die Anthropic-Kette zusätzlich gegen echten `api.anthropic.com`-Traffic.
+**Derzeit nur Claude Code — erweiterbar.** Hinter dem Proxy sitzt eine
+Provider-Schicht: ein Provider sagt nur, welche Pfade einen Turn tragen und wie
+sein Streaming-/JSON-Format zu parsen ist. Alles darüber (Meter, Event-Log,
+Replay, Policy, Quota) arbeitet auf einer normalisierten Form. Aktiv ist nur
+`anthropic` (`/v1/messages`, SSE `message_start`/`message_delta`), gegen echten
+`api.anthropic.com`-Traffic verifiziert. Adapter für Codex CLI und Aider gab es
+bereits; sie konnten aber nur messen, waren nie mit den echten Tools getestet und
+wurden deshalb entfernt statt halbfertig ausgeliefert (siehe git-Historie). Ein
+weiterer Agent ist additiv — kein Eingriff in den Kern.
 
 ### Struktur
 
@@ -312,7 +306,7 @@ Proxy getestet, die Anthropic-Kette zusätzlich gegen echten `api.anthropic.com`
 | `src/harvest.ts` | Assistierter Harvest: Session-Material → Memory-Vorschlag |
 | `src/policy.ts` | Aktionstyp-Klassifizierung + Policy-Stufen (②) |
 | `src/hook.ts` | PreToolUse-Enforcement (ask/deny) über den Agent-Hook |
-| `src/providers/` | Provider-Parser (Anthropic + OpenAI) hinter einem Interface |
-| `src/agents/` | Agent-Adapter (Claude Code, Codex, Aider) |
+| `src/providers/` | Provider-Schicht (derzeit nur Anthropic) hinter einem Interface |
+| `src/agents/` | Agent-Adapter (derzeit nur Claude Code) |
 | `src/cli.ts` | `run [--isolate]` / `sessions` / `replay` / `review` / `discard` / `demo` |
 | `spike/` | Ursprünglicher Wegwerf-Durchstich, der die Kernannahme bewies |
