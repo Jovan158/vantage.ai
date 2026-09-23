@@ -15,6 +15,7 @@ import { startProxy } from "./proxy.ts";
 import { Meter } from "./meter.ts";
 import {
   EventLog,
+  followEvents,
   newSessionId,
   sessionDir,
   sessionEventsPath,
@@ -34,6 +35,7 @@ import type { Policy } from "./policy.ts";
 import { runHook, hookSettings, hookInvocation, decisionRecord } from "./hook.ts";
 import { resolveCommand } from "./resolve.ts";
 import { TerminalGate } from "./terminal.ts";
+import { Notifier, systemSend, notificationsEnabled } from "./notify.ts";
 import {
   BudgetGuard,
   budgetStatePath,
@@ -216,12 +218,21 @@ async function cmdRun(argv: string[]): Promise<number> {
   const effectivePolicy = loadPolicy(cwd);
   const policy = new PolicyWatcher(effectivePolicy);
   const guard = hasBudget(budget) ? new BudgetGuard(budget, budgetStatePath(sessionDir(cwd, sessionId))) : null;
+
+  // Claude Code's chat UI owns the terminal from launch until exit; Vantage
+  // then speaks through `vantage watch` and desktop notifications only.
+  const interactive = adapter.isInteractive(agentArgs) && Boolean(process.stderr.isTTY);
+  const notifier = notificationsEnabled(interactive) ? new Notifier(systemSend()) : null;
+  let lastRequestMs = 0;
+  let messageStartMs: number | null = null;
+
   const onBudget = (change: BudgetChange | null, notes: string[]): void => {
     for (const note of notes) warn({ key: "budget", level: "warn", message: `budget: ${note}` });
     if (!change) return;
     eventLog.append({ ts: new Date().toISOString(), type: "budget", state: change.kind, reason: change.reason });
     if (change.kind === "reached") {
       warn({ key: "budget", level: "critical", message: `budget reached — ${change.reason}. Every action now needs your approval.` });
+      notifier?.notify("budget", "Vantage: budget reached", `${change.reason}. Claude now asks before every action.`);
     } else {
       log(`budget: ${change.reason} — actions run as before`);
     }
@@ -269,12 +280,24 @@ async function cmdRun(argv: string[]): Promise<number> {
     provider: adapter.provider,
     // Lets watch say "Claude is thinking" while a chat turn is in flight.
     onRequest: (info) => {
-      if (!info.background) eventLog.append({ ts: new Date().toISOString(), type: "request" });
+      if (info.background) return;
+      eventLog.append({ ts: new Date().toISOString(), type: "request" });
+      lastRequestMs = Date.now();
+      messageStartMs ??= lastRequestMs;
     },
     log: (msg) => terminal.info(`\x1b[2m[vantage:proxy]\x1b[0m ${msg}\n`),
     onUsage: (e: UsageEvent) => {
       eventLog.append(e);
       meter.add(e);
+      // A reply that ends the tool loop finishes the message. Worth a
+      // notification only when it took long enough for you to look away.
+      if (!e.background && e.stopReason !== "tool_use" && messageStartMs !== null) {
+        const took = Date.now() - messageStartMs;
+        if (took >= 30_000) {
+          notifier?.notify(`done:${messageStartMs}`, "Claude is done", `Finished after ${Math.round(took / 1000)}s${e.prompt ? `: ${e.prompt.slice(0, 80)}` : ""}`);
+        }
+        messageStartMs = null;
+      }
       log(meter.statusLine());
       if (guard) {
         const t = meter.snapshot();
@@ -296,7 +319,10 @@ async function cmdRun(argv: string[]): Promise<number> {
         path: "/",
         raw: snapshot.raw,
       });
-      for (const w of quota.update(snapshot)) warn(w);
+      for (const w of quota.update(snapshot)) {
+        warn(w);
+        notifier?.notify(`quota:${w.key}`, "Vantage: usage limit", w.message);
+      }
       if (guard) onBudget(guard.onQuota(snapshot), guard.blindSpots([], snapshot));
     },
   });
@@ -385,10 +411,25 @@ async function cmdRun(argv: string[]): Promise<number> {
   // From here until the agent exits, its chat UI owns the terminal. Anything
   // written now would land inside that UI, so live numbers go to
   // `vantage watch` and alerts wait until the end.
-  if (adapter.isInteractive(agentArgs) && process.stderr.isTTY) {
+  if (interactive) {
     log("live view: run `vantage watch` in a second terminal — Vantage stays quiet here until Claude Code exits");
+    if (notifier) log("desktop notifications on (VANTAGE_NOTIFY=0 turns them off)");
     terminal.hold();
   }
+
+  // The hook (a separate process) logs its questions to the event log. A
+  // question still open after 10 seconds — no new request from Claude, so
+  // nobody answered — is worth a notification.
+  const stopDecisionWatch = notifier
+    ? followEvents(eventLog.filePath, (e) => {
+        if (e.type !== "decision" || e.decision !== "ask") return;
+        const askedMs = Date.parse(e.ts);
+        setTimeout(() => {
+          if (lastRequestMs > askedMs) return;
+          notifier.notify(`ask:${e.ts}`, "Claude is waiting for your approval", `${e.tool}${e.target ? ` ${e.target}` : ""}`);
+        }, 10_000).unref();
+      })
+    : () => {};
 
   const child = spawn(target.resolved.command, [...target.resolved.prefix, ...finalArgs], {
     cwd: childCwd,
@@ -409,6 +450,7 @@ async function cmdRun(argv: string[]): Promise<number> {
       void failLaunch(reason).then(resolve);
     });
     child.on("exit", async (code) => {
+      stopDecisionWatch();
       releaseTerminal();
       eventLog.append({ ts: new Date().toISOString(), type: "session_end", exitCode: code });
       const t = meter.snapshot();

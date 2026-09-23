@@ -59,7 +59,7 @@ der Schwelle (kein Spam), re-armiert nach Reset, und meldet akute Fälle
 (`rejected`, `retry-after`) sofort:
 
 ```
-[vantage] warning: Quota 5h zu 92% verbraucht — nähert sich dem Limit (reset 18m)
+[vantage] warning: 5-hour limit 92% used — getting close (resets in 18m)
 ```
 
 Schwelle konfigurierbar über `VANTAGE_QUOTA_WARN` (Prozent `80` oder Anteil `0.8`,

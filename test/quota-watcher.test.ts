@@ -20,7 +20,7 @@ test("warns once when crossing the threshold, then stays quiet", () => {
   const first = w.update(unified(0.92));
   assert.equal(first.length, 1, "crossing: one warning");
   assert.equal(first[0]!.level, "warn");
-  assert.match(first[0]!.message, /Quota 5h zu 92% verbraucht/);
+  assert.match(first[0]!.message, /5-hour limit 92% used/);
   assert.equal(w.update(unified(0.95)).length, 0, "still over: no repeat");
 });
 
@@ -45,7 +45,7 @@ test("warns on retry-after", () => {
   const out = w.update(snap);
   assert.equal(out.length, 1);
   assert.equal(out[0]!.level, "critical");
-  assert.match(out[0]!.message, /retry-after 30s/);
+  assert.match(out[0]!.message, /retry after 30s/);
 });
 
 test("classic buckets warn when nearly drained", () => {
@@ -56,5 +56,22 @@ test("classic buckets warn when nearly drained", () => {
   })!;
   const out = w.update(snap);
   assert.equal(out.length, 1);
-  assert.match(out[0]!.message, /tokens zu 95% verbraucht/);
+  assert.match(out[0]!.message, /tokens 95% used/);
+});
+
+test("allowed_warning is close to the limit, not blocked", () => {
+  const w = new QuotaWatcher(0.9);
+  const out = w.update({
+    unified: {
+      status: "allowed_warning",
+      representativeClaim: null,
+      overageStatus: null,
+      windows: [{ key: "5h", status: "allowed_warning", utilization: 0.92, resetUnix: null }],
+    },
+    retryAfterSec: null,
+    raw: {},
+  });
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.level, "warn");
+  assert.doesNotMatch(out[0]!.message, /blocked/);
 });

@@ -199,15 +199,18 @@ export class QuotaWatcher {
     };
     const clear = (key: string): void => void this.warned.delete(key);
     const resetHint = (unix: number | null): string =>
-      unix != null ? ` (reset ${relFromSeconds(unix - now / 1000)})` : "";
+      unix != null ? ` (resets in ${relFromSeconds(unix - now / 1000)})` : "";
+    const label = (key: string): string => (key === "5h" ? "5-hour" : key === "7d" ? "weekly" : key);
 
     if (s.unified) {
       for (const w of s.unified.windows) {
-        if (w.status && w.status !== "allowed") {
+        // Only "rejected" blocks requests; "allowed_warning" still lets them
+        // through and is covered by the utilization warning below.
+        if (w.status === "rejected") {
           once(`rej:${w.key}`, () => ({
             key: w.key,
             level: "critical",
-            message: `Quota-Fenster ${w.key} ist ${w.status} — Anfragen werden blockiert${resetHint(w.resetUnix)}`,
+            message: `${label(w.key)} limit reached (rejected) — requests are blocked${resetHint(w.resetUnix)}`,
           }));
         } else {
           clear(`rej:${w.key}`);
@@ -217,7 +220,7 @@ export class QuotaWatcher {
             once(`util:${w.key}`, () => ({
               key: w.key,
               level: "warn",
-              message: `Quota ${w.key} zu ${Math.round(w.utilization! * 100)}% verbraucht — nähert sich dem Limit${resetHint(w.resetUnix)}`,
+              message: `${label(w.key)} limit ${Math.round(w.utilization! * 100)}% used — getting close${resetHint(w.resetUnix)}`,
             }));
           } else {
             clear(`util:${w.key}`);
@@ -242,7 +245,7 @@ export class QuotaWatcher {
         once(`classic:${name}`, () => ({
           key: name,
           level: "warn",
-          message: `${name} zu ${Math.round(used * 100)}% verbraucht — noch ${f.remaining}/${f.limit}`,
+          message: `${name} ${Math.round(used * 100)}% used — ${f.remaining}/${f.limit} left`,
         }));
       } else {
         clear(`classic:${name}`);
@@ -253,7 +256,7 @@ export class QuotaWatcher {
       once("retry", () => ({
         key: "retry-after",
         level: "critical",
-        message: `Rate-Limit erreicht — retry-after ${s.retryAfterSec}s`,
+        message: `rate limit hit — retry after ${s.retryAfterSec}s`,
       }));
     } else {
       clear("retry");

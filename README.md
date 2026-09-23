@@ -50,6 +50,8 @@ Arguments after `--` go to Claude Code: `vantage run claude -- -p "fix the faili
 
 While Claude Code's chat is open, Vantage writes nothing to its terminal. Live
 numbers are in `vantage watch`; warnings are printed when Claude Code exits.
+A desktop notification tells you when Claude waits for your approval, finishes
+a task that took a while, or nears a limit or budget.
 
 ## Commands
 
@@ -92,6 +94,7 @@ By default, `shell` and `network` are `warn` and everything else is `allow`.
 | `VANTAGE_POLICY` | Override rules, e.g. `shell:deny,network:ask` |
 | `VANTAGE_MAX_COST`, `VANTAGE_MAX_QUOTA` | Budget, same as the `run` options |
 | `VANTAGE_QUOTA_WARN` | Quota warning threshold in percent (default 90) |
+| `VANTAGE_NOTIFY` | `0` turns desktop notifications off, `1` turns them on outside the chat UI too |
 | `VANTAGE_AGENT_PATH` | Path to Claude Code if it is not found on `PATH` |
 | `VANTAGE_DEBUG=1` | Log upstream status and rate-limit headers |
 
