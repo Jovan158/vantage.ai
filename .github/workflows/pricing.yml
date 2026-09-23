@@ -7,6 +7,12 @@ name: Pricing drift
 # The same check fails loudly if the page format changes and no longer parses.
 
 on:
+  # Also whenever the parser, the bundled list or this check changes.
+  push:
+    paths:
+      - src/pricing-source.ts
+      - src/pricing-snapshot.ts
+      - .github/workflows/pricing.yml
   schedule:
     - cron: "23 6 * * 1"
   workflow_dispatch:
