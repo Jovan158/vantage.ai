@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createTurnExtractor, extractTurnFromJson, extractUserPrompt, stripInjectedContext } from "../src/turn.ts";
+import { createTurnExtractor, extractTurnFromJson, extractUserPrompt, extractRequestInfo, stripInjectedContext } from "../src/turn.ts";
 
 function frame(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -131,4 +131,15 @@ test("the 1-hour cache-write share is read from real usage objects", () => {
   const t = ex.end();
   assert.equal(t.usage.cache_creation_input_tokens, 77000);
   assert.equal(t.usage.cache_write_1h_tokens, 77000);
+});
+
+// Real Claude Code traffic: chat turns carry the tool list (38 tools), its
+// background calls (judging whether the agent is done) carry none.
+test("a request without tools is the agent's own background call", () => {
+  const turn = JSON.stringify({ tools: [{ name: "Read" }], messages: [{ role: "user", content: "fix the bug" }] });
+  assert.deepEqual(extractRequestInfo(turn), { prompt: "fix the bug", background: false });
+  const bg = JSON.stringify({ max_tokens: 1024, messages: [{ role: "user", content: "Current state: working" }] });
+  assert.equal(extractRequestInfo(bg).background, true);
+  // Cut off at the capture limit: only huge chat turns get there.
+  assert.equal(extractRequestInfo('{"messages":[{"role":"user","content":"x').background, false);
 });

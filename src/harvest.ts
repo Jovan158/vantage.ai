@@ -29,6 +29,8 @@ function noColor(): typeof C {
 export interface Harvest {
   sessionId: string;
   turns: number;
+  /** All metered requests, the basis of the cost label. */
+  requests: number;
   costUsd: number;
   unpriced: number;
   /** The agent's own closing summary — the most useful no-LLM signal. */
@@ -46,7 +48,7 @@ export function collectHarvest(
   const tools: string[] = [];
   let closingReply: string | null = null;
   for (const e of events) {
-    if (e.type !== "usage") continue;
+    if (e.type !== "usage" || e.background) continue;
     if (e.tools) tools.push(...e.tools);
     // Keep the last non-empty reply that reads like prose rather than the
     // agent's internal JSON state blob.
@@ -54,7 +56,8 @@ export function collectHarvest(
   }
   return {
     sessionId,
-    turns: s.requests,
+    turns: s.turns,
+    requests: s.requests,
     costUsd: s.costUsd,
     unpriced: s.unpriced,
     closingReply,
@@ -73,7 +76,7 @@ export function renderHarvest(h: Harvest, color = true): string {
   const lines: string[] = [];
 
   lines.push(`${c.bold}harvest${c.reset} ${c.dim}· session ${h.sessionId}${c.reset}`);
-  lines.push(`${c.dim}${h.turns} turn(s) · ${formatCost(h.costUsd, h.unpriced, h.turns)}${h.actions ? ` · ${h.actions}` : ""}${c.reset}`);
+  lines.push(`${c.dim}${h.turns} turn(s) · ${formatCost(h.costUsd, h.unpriced, h.requests)}${h.actions ? ` · ${h.actions}` : ""}${c.reset}`);
   lines.push("");
 
   if (h.closingReply) {

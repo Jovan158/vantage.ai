@@ -200,14 +200,36 @@ export function extractTurnFromJson(body: string): TurnContent | null {
 }
 
 // Last user message text from a request body (Messages API shape).
-export function extractUserPrompt(body: string): string | null {
-  let json: { messages?: Array<{ role?: string; content?: unknown }> };
+export interface RequestInfo {
+  prompt: string | null;
+  /**
+   * A request the agent made on its own, not a chat turn. Claude Code sends
+   * every chat turn with its tool list; its background calls (e.g. judging
+   * whether the agent is done or waiting) carry no tools. An unparseable body
+   * — cut off because it is very large — is a chat turn: background calls are
+   * small.
+   */
+  background: boolean;
+}
+
+export function extractRequestInfo(body: string): RequestInfo {
+  let json: { messages?: Array<{ role?: string; content?: unknown }>; tools?: unknown[] };
   try {
     json = JSON.parse(body);
   } catch {
-    return null;
+    return { prompt: null, background: false };
   }
-  const msgs = json.messages ?? [];
+  return {
+    prompt: promptFrom(json.messages ?? []),
+    background: !Array.isArray(json.tools) || json.tools.length === 0,
+  };
+}
+
+export function extractUserPrompt(body: string): string | null {
+  return extractRequestInfo(body).prompt;
+}
+
+function promptFrom(msgs: Array<{ role?: string; content?: unknown }>): string | null {
   for (let i = msgs.length - 1; i >= 0; i--) {
     const m = msgs[i]!;
     if (m.role !== "user") continue;

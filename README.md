@@ -41,7 +41,7 @@ npm install -g ./vantagedev-0.0.1.tgz
 
 ```bash
 vantage run claude     # start Claude Code through Vantage
-vantage watch          # live view — run it in a second terminal
+vantage watch          # live view — in a second terminal, from any directory
 vantage sessions       # list past sessions
 vantage replay <id>    # replay one as a timeline
 ```
@@ -56,7 +56,7 @@ numbers are in `vantage watch`; warnings are printed when Claude Code exits.
 | Command | Description |
 | --- | --- |
 | `vantage run [options] claude [-- args]` | Start Claude Code through Vantage |
-| `vantage watch [id]` | Live view of the running session |
+| `vantage watch [id]` | Live view of the latest session, from any directory |
 | `vantage sessions` | List past sessions |
 | `vantage replay <id>` | Show a session as a timeline |
 | `vantage review <id>` · `vantage discard <id>` | Show or discard an isolated session's changes |

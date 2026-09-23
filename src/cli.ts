@@ -25,7 +25,8 @@ import { startMockAnthropic } from "./dev/mock-anthropic.ts";
 import { QuotaWatcher } from "./ratelimit.ts";
 import type { QuotaWarning } from "./ratelimit.ts";
 import { renderTimeline, listSessions } from "./replay.ts";
-import { renderLive, newestSessionId, readSessionEvents } from "./watch.ts";
+import { renderLive, newestSessionId, readSessionEvents, findWatchTarget } from "./watch.ts";
+import { recordLastSession } from "./home.ts";
 import { collectHarvest, renderHarvest, worthHarvesting } from "./harvest.ts";
 import { compileMemory, initMemory, addNote, memoryDir } from "./memory.ts";
 import { loadPolicy, PolicyWatcher, needsEnforcement } from "./policy.ts";
@@ -255,6 +256,7 @@ async function cmdRun(argv: string[]): Promise<number> {
   });
 
   eventLog.append({ ts: new Date().toISOString(), type: "session_start", agent: adapter.id });
+  recordLastSession({ cwd, sessionId });
 
   const proxy = await startProxy({
     upstream,
@@ -559,7 +561,7 @@ async function cmdSessions(): Promise<number> {
     const when = s.startedAt ? s.startedAt.replace("T", " ").slice(0, 19) : "?";
     process.stdout.write(
       `${s.sessionId}${flags}\n` +
-        `  ${when} · ${s.agent ?? "?"} · ${s.requests} turn(s) · ` +
+        `  ${when} · ${s.agent ?? "?"} · ${s.turns} turn(s) · ` +
         `out ${s.output} · ${formatCost(s.costUsd, s.unpriced, s.requests)}\n`
     );
   }
@@ -578,8 +580,9 @@ async function cmdWatch(argv: string[]): Promise<number> {
     process.stdout.write("\x1b[H\x1b[J" + body + "\n"); // home, clear to end
   };
 
-  let current = pinned ?? newestSessionId(cwd);
-  if (!current) draw("waiting for a session…  (start one with `vantage run <agent>`)");
+  const waiting = "waiting for a session…  (start one with `vantage run claude`)";
+  let current = findWatchTarget(cwd, pinned);
+  if (!current) draw(pinned ? `no session ${pinned} here or as the last started one` : waiting);
 
   return await new Promise<number>((resolve) => {
     const stop = (): void => {
@@ -590,19 +593,23 @@ async function cmdWatch(argv: string[]): Promise<number> {
     process.on("SIGINT", stop);
 
     const timer = setInterval(() => {
-      // Without a pinned id, follow whichever session is newest, so you can
-      // start watching before launching the agent.
-      if (!pinned) {
-        const newest = newestSessionId(cwd);
-        if (newest && newest !== current) current = newest;
-      }
+      // Without a pinned id, follow whichever session started last — here or
+      // in another directory — so watch can be opened anywhere, even before
+      // the agent is launched.
+      if (!pinned) current = findWatchTarget(cwd) ?? current;
       if (!current) {
-        draw("waiting for a session…  (start one with `vantage run <agent>`)");
+        draw(waiting);
         return;
       }
-      const events = readSessionEvents(cwd, current);
+      const events = readSessionEvents(current.cwd, current.sessionId);
       if (events.length === 0) return;
-      draw(renderLive(events, { sessionId: current, color: process.stdout.isTTY ?? false }));
+      draw(
+        renderLive(events, {
+          sessionId: current.sessionId,
+          project: path.resolve(current.cwd) === path.resolve(cwd) ? undefined : current.cwd,
+          color: process.stdout.isTTY ?? false,
+        })
+      );
 
       // A pinned session that has finished has nothing more to show.
       if (pinned && events.some((e) => e.type === "session_end")) stop();

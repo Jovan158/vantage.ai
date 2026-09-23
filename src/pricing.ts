@@ -24,9 +24,9 @@
 // the real signal there (CONCEPT.md §6a).
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { TokenUsage } from "./usage.ts";
+import { vantageHome } from "./home.ts";
 import { SNAPSHOT } from "./pricing-snapshot.ts";
 
 export interface ModelPricing {
@@ -97,13 +97,7 @@ export function validateTable(x: unknown): PriceTable {
 // ---------------------------------------------------------------------------
 // Active prices: bundled snapshot + the user's last `pricing update`.
 
-// Per-user state (not per project: prices do not depend on the repo).
-// VANTAGE_HOME relocates it — for tests, and for machines where the home
-// directory is not writable.
-export function vantageHome(): string {
-  return process.env.VANTAGE_HOME || path.join(os.homedir(), ".vantage");
-}
-
+// Per user, not per project: prices do not depend on the repo.
 export function pricingCachePath(): string {
   return path.join(vantageHome(), "pricing.json");
 }

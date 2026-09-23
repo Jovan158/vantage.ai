@@ -17,7 +17,7 @@ function runVantage(agentPath: string, agentArgs: string[]) {
   const res = spawnSync(
     process.execPath,
     ["--experimental-strip-types", cli, "run", "claude", "--", ...agentArgs],
-    { cwd, encoding: "utf8", env: { ...process.env, VANTAGE_AGENT_PATH: agentPath }, timeout: 30_000 }
+    { cwd, encoding: "utf8", env: { ...process.env, VANTAGE_AGENT_PATH: agentPath, VANTAGE_HOME: cwd }, timeout: 30_000 }
   );
   fs.rmSync(cwd, { recursive: true, force: true });
   return res;

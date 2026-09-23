@@ -10,7 +10,7 @@ import zlib from "node:zlib";
 import { URL } from "node:url";
 import type { AddressInfo } from "node:net";
 import type { Transform } from "node:stream";
-import { extractUserPrompt } from "./turn.ts";
+import { extractRequestInfo, type RequestInfo } from "./turn.ts";
 import type { TurnContent } from "./turn.ts";
 import { getProvider } from "./providers/index.ts";
 import type { Provider, ProviderName } from "./providers/index.ts";
@@ -79,7 +79,9 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     const headers = { ...clientReq.headers, host: upstreamUrl.host };
 
     // Tee the request body (capped) to recover the last user prompt. Requests
-    // to the Messages API are uncompressed JSON in practice.
+    // to the Messages API are uncompressed JSON in practice. The cap is high
+    // because a long session resends its whole history every turn; a body
+    // cut off at the cap yields no prompt.
     const reqChunks: Buffer[] = [];
     let reqBytes = 0;
     const captureReq =
@@ -89,15 +91,15 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
       !clientReq.headers["content-encoding"];
     if (captureReq) {
       clientReq.on("data", (chunk: Buffer) => {
-        if (reqBytes < 512 * 1024) {
+        if (reqBytes < 16 * 1024 * 1024) {
           reqChunks.push(chunk);
           reqBytes += chunk.length;
         }
       });
     }
-    const userPrompt = (): string | undefined => {
-      if (!captureReq || reqChunks.length === 0) return undefined;
-      return extractUserPrompt(Buffer.concat(reqChunks).toString("utf8")) ?? undefined;
+    const requestInfo = (): RequestInfo => {
+      if (!captureReq || reqChunks.length === 0) return { prompt: null, background: false };
+      return extractRequestInfo(Buffer.concat(reqChunks).toString("utf8"));
     };
 
     const upstreamReq = upstreamClient.request(
@@ -155,7 +157,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
         const emit = (turn: TurnContent): void => {
           if (!opts.onUsage) return;
           const u = turn.usage;
-          const prompt = userPrompt();
+          const { prompt, background } = requestInfo();
           opts.onUsage({
             ts: new Date().toISOString(),
             type: "usage",
@@ -167,6 +169,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
             cache_write: u.cache_creation_input_tokens,
             cost_usd: ((c) => (c === null ? null : Number(c.toFixed(6))))(estimateCostUsd(u)),
             ...(prompt ? { prompt } : {}),
+            ...(background ? { background: true } : {}),
             ...(turn.text ? { text: turn.text } : {}),
             ...(turn.tools.length ? { tools: turn.tools.map((t) => t.name) } : {}),
             ...(turn.stopReason ? { stopReason: turn.stopReason } : {}),

@@ -20,6 +20,8 @@ export interface UsageEvent {
   text?: string;
   tools?: string[];
   stopReason?: string | null;
+  /** A call the agent made on its own, not a chat turn (see turn.ts). */
+  background?: boolean;
 }
 
 export interface SessionEvent {

@@ -44,7 +44,10 @@ export interface SessionSummary {
   agent: string | null;
   isolated: boolean;
   startedAt: string | null;
+  /** Every metered request, background calls included (cost basis). */
   requests: number;
+  /** Chat turns only — what the user would count. */
+  turns: number;
   input: number;
   output: number;
   cacheRead: number;
@@ -61,6 +64,7 @@ export function summarize(sessionId: string, events: VantageEvent[]): SessionSum
     isolated: false,
     startedAt: null,
     requests: 0,
+    turns: 0,
     input: 0,
     output: 0,
     cacheRead: 0,
@@ -77,6 +81,7 @@ export function summarize(sessionId: string, events: VantageEvent[]): SessionSum
       s.exitCode = e.exitCode;
     } else if (e.type === "usage") {
       s.requests += 1;
+      if (!e.background) s.turns += 1;
       s.input += e.in;
       s.output += e.out;
       s.cacheRead += e.cache_read;
@@ -105,9 +110,17 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
         lines.push(`${c.bold}● session start${c.reset} ${c.dim}· agent ${e.agent ?? "?"}${c.reset}`);
         break;
       case "usage": {
-        step += 1;
         const model = e.model ?? "?";
         const cost = e.cost_usd === null ? "$? (price unknown)" : `$${e.cost_usd.toFixed(4)}`;
+        // A call the agent made on its own: one dim line, so its cost is
+        // visible without it posing as a step of the conversation.
+        if (e.background) {
+          lines.push(
+            `${at} ${c.dim}· background call ${model} · in ${fmtTokens(e.in)} · out ${fmtTokens(e.out)} · ${cost}${c.reset}`
+          );
+          break;
+        }
+        step += 1;
         lines.push(
           `${at} ${c.cyan}▸ turn ${step}${c.reset} ${c.dim}${model}${c.reset} · ` +
             `in ${fmtTokens(e.in)} · out ${c.green}${fmtTokens(e.out)}${c.reset} · ` +
@@ -141,7 +154,7 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
       case "session_end": {
         const s = summarize("", events);
         lines.push(
-          `${at} ${c.bold}● session end${c.reset} ${c.dim}· ${s.requests} turn(s) · ` +
+          `${at} ${c.bold}● session end${c.reset} ${c.dim}· ${s.turns} turn(s) · ` +
             `in ${fmtTokens(s.input)} · out ${fmtTokens(s.output)} · ` +
             `cache ${fmtTokens(s.cacheRead)}r/${fmtTokens(s.cacheWrite)}w · ` +
             formatCost(s.costUsd, s.unpriced, s.requests) +

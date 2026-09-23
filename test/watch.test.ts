@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { renderLive, newestSessionId, readSessionEvents } from "../src/watch.ts";
+import { renderLive, newestSessionId, readSessionEvents, findWatchTarget } from "../src/watch.ts";
+import { recordLastSession } from "../src/home.ts";
 import type { VantageEvent } from "../src/events.ts";
 
 const T0 = "2026-09-18T09:00:00.000Z";
@@ -95,4 +96,58 @@ test("a half-written log line never throws (the writer may be mid-append)", () =
   fs.writeFileSync(path.join(dir, "events.jsonl"), '{"ts":"x","type":"session_start"}\n{"ts":"y","ty');
   assert.deepEqual(readSessionEvents(cwd, "s1"), []);
   fs.rmSync(cwd, { recursive: true, force: true });
+});
+
+test("latest turn skips the agent's background calls; totals still count them", () => {
+  const withBackground: VantageEvent[] = [
+    ...running,
+    {
+      ts: t(5),
+      type: "usage",
+      path: "/v1/messages",
+      model: "claude-sonnet-5",
+      in: 60,
+      out: 40,
+      cache_read: 0,
+      cache_write: 0,
+      cost_usd: 0.001,
+      prompt: "Current state: working (for 0m)",
+      text: '{"state":"done"}',
+      background: true,
+    },
+  ];
+  const frame = renderLive(withBackground, { sessionId: "s1", nowMs: NOW, color: false });
+  assert.match(frame, /prompt add a retry to the fetch helper/);
+  assert.doesNotMatch(frame, /Current state/);
+  assert.match(frame, /turns\s+1/); // one chat turn…
+  assert.match(frame, /~\$0\.0320/); // …but both requests are in the cost
+});
+
+test("watch finds the last started session from any directory", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vantage-home-"));
+  process.env.VANTAGE_HOME = home;
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "vantage-proj-"));
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "vantage-else-"));
+  const mk = (cwd: string, id: string): void => {
+    const dir = path.join(cwd, ".vantage", "sessions", id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "events.jsonl"), JSON.stringify({ ts: T0, type: "session_start" }) + "\n");
+  };
+
+  assert.equal(findWatchTarget(elsewhere), null);
+  mk(project, "2026-09-23T10-00-00-000Z_aaaa");
+  recordLastSession({ cwd: project, sessionId: "2026-09-23T10-00-00-000Z_aaaa" });
+  assert.deepEqual(findWatchTarget(elsewhere), { cwd: project, sessionId: "2026-09-23T10-00-00-000Z_aaaa" });
+
+  // A newer session in watch's own directory wins over the pointer.
+  mk(elsewhere, "2026-09-23T11-00-00-000Z_bbbb");
+  assert.deepEqual(findWatchTarget(elsewhere), { cwd: elsewhere, sessionId: "2026-09-23T11-00-00-000Z_bbbb" });
+
+  // A pinned id is found in the other project through the pointer.
+  assert.deepEqual(findWatchTarget(elsewhere, "2026-09-23T10-00-00-000Z_aaaa")?.cwd, project);
+
+  // A pointer to a deleted project is ignored.
+  fs.rmSync(project, { recursive: true, force: true });
+  assert.deepEqual(findWatchTarget(elsewhere)?.cwd, elsewhere);
+  for (const d of [home, elsewhere]) fs.rmSync(d, { recursive: true, force: true });
 });

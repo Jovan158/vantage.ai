@@ -13,6 +13,7 @@ import { extractRateLimit, formatRateLimit } from "./ratelimit.ts";
 import { summarizeActions, formatActionSummary } from "./policy.ts";
 import { summarize } from "./replay.ts";
 import { formatCost } from "./pricing.ts";
+import { readLastSession, type SessionRef } from "./home.ts";
 
 const C = {
   dim: "\x1b[2m",
@@ -56,6 +57,8 @@ function outputRate(events: VantageEvent[], nowMs: number, windowMs = 60_000): n
 
 export interface LiveOptions {
   sessionId: string;
+  /** Shown when the session belongs to another directory than watch's. */
+  project?: string;
   nowMs?: number;
   color?: boolean;
 }
@@ -75,12 +78,12 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
     : `${c.green}running${c.reset}`;
 
   lines.push(`${dot} ${c.bold}vantage${c.reset} ${c.dim}·${c.reset} ${s.agent ?? "?"} ${c.dim}·${c.reset} ${state} ${c.dim}· ${fmtElapsed(now - start)}${c.reset}`);
-  lines.push(`${c.dim}${opts.sessionId}${c.reset}`);
+  lines.push(`${c.dim}${opts.sessionId}${opts.project ? ` · ${opts.project}` : ""}${c.reset}`);
   lines.push("");
 
   // Headline numbers.
   lines.push(
-    `  ${c.dim}turns${c.reset}  ${c.bold}${s.requests}${c.reset}` +
+    `  ${c.dim}turns${c.reset}  ${c.bold}${s.turns}${c.reset}` +
       `   ${c.dim}in${c.reset} ${fmtTokens(s.input)}` +
       `   ${c.dim}out${c.reset} ${c.green}${fmtTokens(s.output)}${c.reset}` +
       `   ${c.dim}cache${c.reset} ${fmtTokens(s.cacheRead)}r/${fmtTokens(s.cacheWrite)}w`
@@ -111,8 +114,9 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
   const actions = formatActionSummary(summarizeActions(allTools));
   if (actions) lines.push(`  ${c.dim}actions${c.reset} ${actions}`);
 
-  // Most recent turn, so you can see the current intent at a glance.
-  const lastTurn = [...events].reverse().find((e) => e.type === "usage");
+  // Most recent chat turn, so you can see the current intent at a glance.
+  // The agent's background calls count in the totals above but are not turns.
+  const lastTurn = [...events].reverse().find((e) => e.type === "usage" && !e.background);
   if (lastTurn && lastTurn.type === "usage") {
     lines.push("");
     lines.push(`  ${c.cyan}latest turn${c.reset} ${c.dim}${lastTurn.model ?? "?"}${c.reset}`);
@@ -128,6 +132,21 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
 
 function clip(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
+
+// The session `vantage watch` should show: the newest one started from this
+// directory, or — when a session was started elsewhere more recently — that
+// one. Session ids start with their start time, so they compare as strings.
+// A pinned id is looked up here first, then as the last started session.
+export function findWatchTarget(cwd: string, pinned?: string): SessionRef | null {
+  const last = readLastSession();
+  if (pinned) {
+    if (fs.existsSync(path.join(sessionDir(cwd, pinned), "events.jsonl"))) return { cwd, sessionId: pinned };
+    return last && last.sessionId === pinned ? last : null;
+  }
+  const local = newestSessionId(cwd);
+  if (local && (!last || local >= last.sessionId)) return { cwd, sessionId: local };
+  return last;
 }
 
 // Newest session id on disk (ids are timestamp-prefixed, so lexicographic
