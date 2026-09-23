@@ -199,3 +199,66 @@ test("an invalid budget value is refused before anything starts", async () => {
   assert.equal(fs.existsSync(path.join(dir, ".vantage")), false);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// The race the review found: Claude Code runs the hook for a tool while the
+// reply that asked for it is still streaming, before its cost is known. The
+// upstream here holds back the usage (message_delta) for 800 ms; the stand-in
+// agent runs the hook as soon as the first bytes arrive.
+test("the hook waits for the reply in flight before judging the budget", async () => {
+  const http = await import("node:http");
+  const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const upstream = http.createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    res.write(frame("message_start", { type: "message_start", message: { model: "claude-sonnet-5", usage: { input_tokens: 5000, output_tokens: 1 } } }));
+    res.write(frame("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "tool_use", name: "Write" } }));
+    res.write(frame("content_block_stop", { type: "content_block_stop", index: 0 }));
+    setTimeout(() => {
+      res.write(frame("message_delta", { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 500 } }));
+      res.end(frame("message_stop", { type: "message_stop" }));
+    }, 800);
+  });
+  await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", () => r()));
+  const port = (upstream.address() as { port: number }).port;
+
+  const EARLY = `
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+(async () => {
+  const settings = JSON.parse(fs.readFileSync(process.argv[process.argv.indexOf("--settings") + 1], "utf8"));
+  const hook = settings.hooks.PreToolUse[0].hooks[0];
+  const res = await fetch(process.env.ANTHROPIC_BASE_URL + "/v1/messages", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-5", stream: true, tools: [{ name: "Write" }], messages: [{ role: "user", content: "go" }] }),
+  });
+  const reader = res.body.getReader();
+  await reader.read(); // first bytes only: the tool block, no cost yet
+  const out = spawnSync(hook.command, hook.args, { input: JSON.stringify({ tool_name: "Write" }), encoding: "utf8" });
+  process.stdout.write("HOOK:" + (out.stdout || "none") + "\\n");
+  while (!(await reader.read()).done) {}
+})();
+`;
+  const dir = tmp("vantage-budget-race-");
+  let agent: string;
+  if (process.platform === "win32") {
+    const script = path.join(dir, "node_modules", "early", "cli.js");
+    fs.mkdirSync(path.dirname(script), { recursive: true });
+    fs.writeFileSync(script, EARLY);
+    agent = path.join(dir, "early.cmd");
+    fs.writeFileSync(agent, `@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\nSET "_prog=node"\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\early\\cli.js" %*\r\n`);
+  } else {
+    agent = path.join(dir, "early");
+    fs.writeFileSync(agent, `#!${process.execPath}\n${EARLY}`);
+    fs.chmodSync(agent, 0o755);
+  }
+  try {
+    // Sonnet 5: 5000 in + 500 out ≈ $0.015, over a $0.01 budget.
+    const r = await vantageRun(dir, ["--max-cost", "0.01"], { VANTAGE_UPSTREAM: `http://127.0.0.1:${port}`, VANTAGE_AGENT_PATH: agent, VANTAGE_HOME: dir });
+    assert.equal(r.code, 0, r.err);
+    const hook = /HOOK:(.*)/.exec(r.out)![1]!;
+    assert.notEqual(hook, "none", "the hook answered before the reply was metered");
+    assert.equal(JSON.parse(hook).hookSpecificOutput.permissionDecision, "ask", "judged after the reply was metered");
+  } finally {
+    await new Promise<void>((res) => upstream.close(() => res()));
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

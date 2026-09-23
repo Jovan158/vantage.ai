@@ -60,6 +60,12 @@ export interface ProxyOptions {
    * like a secret in it (the whole conversation so far — deduplicate).
    */
   onRequest?: (info: RequestInfo & { secrets: SecretFinding[] }) => void;
+  /**
+   * An observed request began, or its response has been fully metered
+   * (onUsage already called) or failed. "end" comes exactly once per
+   * "start"; the budget guard uses the pair to know nothing is in flight.
+   */
+  onExchange?: (phase: "start" | "end") => void;
   /** Where VANTAGE_DEBUG output goes; defaults to stderr. */
   log?: (msg: string) => void;
 }
@@ -120,6 +126,17 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     };
     let info: RequestInfo | null = null;
     const requestInfo = (): RequestInfo => (info ??= requestInfoFrom(body()));
+
+    let exchangeOpen = false;
+    const endExchange = (): void => {
+      if (!exchangeOpen) return;
+      exchangeOpen = false;
+      opts.onExchange?.("end");
+    };
+    if (captureReq) {
+      exchangeOpen = true;
+      opts.onExchange?.("start");
+    }
     if (captureReq && opts.onRequest) {
       clientReq.on("end", () => {
         try {
@@ -213,15 +230,19 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
         const finish = (): void => {
           if (settled) return;
           settled = true;
-          if (sse) {
-            emit(sse.end());
-          } else if (jsonChunks) {
-            const turn = provider.extractTurnFromJson(Buffer.concat(jsonChunks).toString("utf8"));
-            if (turn) emit(turn);
+          try {
+            if (sse) {
+              emit(sse.end());
+            } else if (jsonChunks) {
+              const turn = provider.extractTurnFromJson(Buffer.concat(jsonChunks).toString("utf8"));
+              if (turn) emit(turn);
+            }
+          } finally {
+            endExchange();
           }
         };
         const drain = (): void => {
-          if (!observe) return;
+          if (!observe) return endExchange();
           if (decompressor) decompressor.end(() => finish());
           else finish();
         };
@@ -250,6 +271,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     );
 
     upstreamReq.on("error", (err: Error) => {
+      endExchange();
       if (DEBUG) log(`upstream request error: ${err.message}`);
       if (clientRes.destroyed || clientRes.writableEnded) return;
       if (!clientRes.headersSent) clientRes.writeHead(502);
@@ -265,6 +287,8 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     clientRes.on("error", abortUpstream);
     clientRes.on("close", () => {
       if (!clientRes.writableEnded) abortUpstream();
+      // Fallback for a response that never reached its end handlers.
+      setTimeout(endExchange, 5_000).unref();
     });
 
     clientReq.pipe(upstreamReq);

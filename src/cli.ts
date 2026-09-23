@@ -40,6 +40,9 @@ import { resolveCommand } from "./resolve.ts";
 import { TerminalGate } from "./terminal.ts";
 import {
   BudgetGuard,
+  InflightCounter,
+  inflightPath,
+  waitForMetering,
   budgetStatePath,
   formatBudget,
   hasBudget,
@@ -230,6 +233,7 @@ async function cmdRun(argv: string[]): Promise<number> {
   const rules = loadRules(policyFilePath(cwd));
   const policy = new PolicyWatcher(effectivePolicy);
   const guard = hasBudget(budget) ? new BudgetGuard(budget, budgetStatePath(sessionDir(cwd, sessionId))) : null;
+  const inflight = guard ? new InflightCounter(inflightPath(sessionDir(cwd, sessionId))) : null;
 
   // Claude Code's chat UI owns the terminal from launch until exit; Vantage
   // then speaks through `vantage watch` only, and alerts wait until the end.
@@ -314,6 +318,7 @@ async function cmdRun(argv: string[]): Promise<number> {
       eventLog.append({ ts: new Date().toISOString(), type: "request" });
     },
     log: (msg) => terminal.info(`\x1b[2m[vantage:proxy]\x1b[0m ${msg}\n`),
+    onExchange: (phase) => (phase === "start" ? inflight?.start() : inflight?.end()),
     onUsage: (e: UsageEvent) => {
       eventLog.append(e);
       meter.add(e);
@@ -369,6 +374,7 @@ async function cmdRun(argv: string[]): Promise<number> {
       hookEnv.VANTAGE_EVENTS_FILE = eventLog.filePath;
       if (guard) {
         hookEnv.VANTAGE_BUDGET_FILE = budgetStatePath(sessionDir(cwd, sessionId));
+        hookEnv.VANTAGE_INFLIGHT_FILE = inflightPath(sessionDir(cwd, sessionId));
         log(`budget: every action needs approval once ${formatBudget(budget)} is reached`);
       }
     } else {
@@ -835,6 +841,8 @@ async function cmdHook(): Promise<number> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
   const raw = Buffer.concat(chunks).toString("utf8");
+  // With a budget: let the reply that asked for this tool be metered first.
+  if (process.env.VANTAGE_BUDGET_FILE) await waitForMetering(process.env.VANTAGE_INFLIGHT_FILE);
   const out = runHook(
     raw,
     loadPolicy(process.cwd()),

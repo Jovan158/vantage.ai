@@ -13,9 +13,10 @@
 // How it reaches the agent: Claude Code starts the PreToolUse hook as a new
 // process for every tool call, so the hook cannot share memory with the
 // running `vantage run`. The guard writes a small state file into the session
-// directory when the budget trips; the hook reads it on every call. The file
-// is written right when the response that crossed the budget has been
-// metered, which is before the agent runs that response's tools.
+// directory when the budget trips; the hook reads it on every call. Claude
+// Code may start a tool while the reply that asked for it is still
+// streaming, before its cost is known — so the hook first waits (bounded)
+// until no reply is in flight (see InflightCounter).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -60,6 +61,63 @@ export function formatBudget(b: Budget): string {
   if (b.maxCostUsd !== null) parts.push(`cost ~${usd(b.maxCostUsd)}`);
   if (b.maxQuota !== null) parts.push(`${Math.round(b.maxQuota * 100)}% of a quota window`);
   return parts.join(" or ");
+}
+
+// ---------------------------------------------------------------------------
+// Responses in flight, so the hook can wait for the one that may have crossed
+// the budget. Claude Code can start a tool while the reply that asked for it
+// is still streaming; its cost is only known at the end of the reply. With a
+// budget set, `vantage run` keeps a count of observed requests in flight, and
+// the hook waits (briefly, bounded) until it is zero before reading the
+// budget state.
+
+export function inflightPath(sessionDirPath: string): string {
+  return path.join(sessionDirPath, "inflight");
+}
+
+export class InflightCounter {
+  private count = 0;
+  private readonly file: string;
+
+  constructor(file: string) {
+    this.file = file;
+    this.write();
+  }
+
+  start(): void {
+    this.count += 1;
+    this.write();
+  }
+
+  end(): void {
+    this.count = Math.max(0, this.count - 1);
+    this.write();
+  }
+
+  private write(): void {
+    try {
+      fs.mkdirSync(path.dirname(this.file), { recursive: true });
+      fs.writeFileSync(this.file, String(this.count));
+    } catch {
+      /* the hook then does not wait; the budget still applies from the next call */
+    }
+  }
+}
+
+// Waits until no observed response is in flight, or maxMs passed.
+export async function waitForMetering(file: string | undefined, maxMs = 3000, stepMs = 25): Promise<void> {
+  if (!file) return;
+  const until = Date.now() + maxMs;
+  while (Date.now() < until) {
+    let n = 0;
+    try {
+      n = Number(fs.readFileSync(file, "utf8")) || 0;
+    } catch {
+      return;
+    }
+    if (n <= 0) return;
+    await new Promise((r) => setTimeout(r, stepMs));
+  }
 }
 
 // ---------------------------------------------------------------------------
