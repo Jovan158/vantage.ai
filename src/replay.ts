@@ -51,6 +51,13 @@ export function relativeTarget(target: string, project: string | undefined): str
   return target;
 }
 
+// The same for project paths anywhere inside a sentence.
+export function shortenPaths(text: string, project: string | undefined): string {
+  if (!project) return text;
+  const root = project.replace(/[\\/]+$/, "");
+  return text.split(root + "/").join("").split(root + "\\").join("");
+}
+
 export interface SessionSummary {
   sessionId: string;
   agent: string | null;
@@ -172,6 +179,9 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
         }
         break;
       }
+      case "secret":
+        lines.push(`${at} ${c.red}secret sent to the API${c.reset} ${e.kind} (${e.masked}) ${c.dim}· from ${shortenPaths(e.source, project)}${c.reset}`);
+        break;
       case "decision":
         lines.push(
           `${at} ${e.decision === "deny" ? `${c.red}blocked` : `${c.yellow}asked you about`}${c.reset} ` +

@@ -243,12 +243,19 @@ export interface RequestInfo {
 }
 
 export function extractRequestInfo(body: string): RequestInfo {
-  let json: { messages?: Array<{ role?: string; content?: unknown }>; tools?: unknown[] };
+  let json: unknown;
   try {
     json = JSON.parse(body);
   } catch {
     return { prompt: null, background: false };
   }
+  return requestInfoFrom(json);
+}
+
+// From an already parsed body (see proxy.ts, which parses once).
+export function requestInfoFrom(parsed: unknown): RequestInfo {
+  if (!parsed || typeof parsed !== "object") return { prompt: null, background: false };
+  const json = parsed as { messages?: Array<{ role?: string; content?: unknown }>; tools?: unknown[] };
   return {
     prompt: promptFrom(json.messages ?? []),
     background: !Array.isArray(json.tools) || json.tools.length === 0,

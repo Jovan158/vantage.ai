@@ -25,7 +25,7 @@ import { resolveAdapter, knownAgents } from "./agents/index.ts";
 import { startMockAnthropic } from "./dev/mock-anthropic.ts";
 import { QuotaWatcher } from "./ratelimit.ts";
 import type { QuotaWarning } from "./ratelimit.ts";
-import { renderTimeline, listSessions } from "./replay.ts";
+import { renderTimeline, listSessions, shortenPaths } from "./replay.ts";
 import { renderLive, newestSessionId, readSessionEvents, findWatchTarget } from "./watch.ts";
 import { recordLastSession, findSession, knownSessions } from "./home.ts";
 import { sessionStat, renderStats, type SessionStat } from "./stats.ts";
@@ -234,6 +234,7 @@ async function cmdRun(argv: string[]): Promise<number> {
   const interactive = adapter.isInteractive(agentArgs) && Boolean(process.stderr.isTTY);
   const notifier = notificationsEnabled(interactive) ? new Notifier(systemSend()) : null;
   let lastRequestMs = 0;
+  const seenSecrets = new Set<string>();
   let messageStartMs: number | null = null;
 
   const onBudget = (change: BudgetChange | null, notes: string[]): void => {
@@ -301,6 +302,16 @@ async function cmdRun(argv: string[]): Promise<number> {
     provider: adapter.provider,
     // Lets watch say "Claude is thinking" while a chat turn is in flight.
     onRequest: (info) => {
+      for (const f of info.secrets) {
+        if (seenSecrets.has(f.fingerprint)) continue;
+        seenSecrets.add(f.fingerprint);
+        eventLog.append({ ts: new Date().toISOString(), type: "secret", kind: f.kind, masked: f.masked, source: f.source });
+        const source = shortenPaths(f.source, cwd);
+        const article = /^[aeiou]/i.test(f.kind) ? "an" : "a";
+        const message = `${article} ${f.kind} (${f.masked}) was sent to the API, from ${source} — rotate it if it should not leave your machine`;
+        warn({ key: `secret:${f.fingerprint}`, level: "critical", message });
+        notifier?.notify(`secret:${f.fingerprint}`, "Vantage: secret sent to the API", `${f.kind} from ${source}`);
+      }
       if (info.background) return;
       eventLog.append({ ts: new Date().toISOString(), type: "request" });
       lastRequestMs = Date.now();

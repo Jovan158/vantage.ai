@@ -11,7 +11,7 @@ import path from "node:path";
 import { EventLog, sessionDir, type VantageEvent } from "./events.ts";
 import { extractRateLimit, formatRateLimit } from "./ratelimit.ts";
 import { summarizeActions, formatActionSummary } from "./policy.ts";
-import { summarize, relativeTarget } from "./replay.ts";
+import { summarize, relativeTarget, shortenPaths } from "./replay.ts";
 import { formatCost } from "./pricing.ts";
 import { readLastSession, type SessionRef } from "./home.ts";
 
@@ -173,6 +173,15 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
   } else {
     lines.push(`${c.dim}Waiting for the first message…${c.reset}`);
   }
+
+  // --- Secrets sent to the API: rare, and the one thing here you may have
+  // to act on (rotate the key), so right under the status.
+  const secrets = events.filter((e) => e.type === "secret");
+  for (const e of secrets.slice(-3)) {
+    if (e.type !== "secret") continue;
+    lines.push(`${c.red}${c.bold}Sent to the API:${c.reset}${c.red} ${e.kind} (${e.masked}) from ${shortenPaths(e.source, projectPath)}${c.reset}`);
+  }
+  if (secrets.length > 3) lines.push(`${c.red}… and ${secrets.length - 3} more — vantage replay ${opts.sessionId}${c.reset}`);
 
   // --- Limits: will the quota hold?
   if (onSubscription) {

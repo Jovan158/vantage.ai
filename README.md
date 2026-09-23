@@ -11,8 +11,12 @@ Claude Code's own hooks to enforce your rules.
 - **Cost and limits, live.** Tokens, estimated cost at official list prices, and
   your subscription's 5-hour and 7-day quota, with a warning before you hit it.
 - **Budgets.** Past a cost or quota limit you set, every action needs your approval.
-- **Approvals by action type.** Allow, warn, ask or deny file reads, writes, shell
-  commands and network access.
+- **Approvals by action type, file and command.** Allow, warn, ask or deny file
+  reads, writes, shell commands and network access, or specific files and
+  commands such as `.env` or `git push --force`.
+- **Secret warnings.** When something that looks like an API key, private key or
+  password is sent to the API — say, after Claude read a `.env` file — Vantage
+  tells you what it was and where it came from.
 - **Session replay and stats.** Every prompt, reply and tool call as a timeline,
   with secrets redacted, and usage over days and projects.
 - **Change summary.** In a git repository, every session ends with the files it

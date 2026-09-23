@@ -10,7 +10,8 @@ import zlib from "node:zlib";
 import { URL } from "node:url";
 import type { AddressInfo } from "node:net";
 import type { Transform } from "node:stream";
-import { extractRequestInfo, type RequestInfo } from "./turn.ts";
+import { requestInfoFrom, type RequestInfo } from "./turn.ts";
+import { scanRequest, type SecretFinding } from "./secrets.ts";
 import type { TurnContent } from "./turn.ts";
 import { getProvider } from "./providers/index.ts";
 import type { Provider, ProviderName } from "./providers/index.ts";
@@ -54,8 +55,11 @@ export interface ProxyOptions {
   provider?: ProviderName;
   onUsage?: (event: UsageEvent) => void;
   onRateLimit?: (snapshot: RateLimitSnapshot) => void;
-  /** A request to an observed path has been fully received. */
-  onRequest?: (info: RequestInfo) => void;
+  /**
+   * A request to an observed path has been fully received, with what looks
+   * like a secret in it (the whole conversation so far — deduplicate).
+   */
+  onRequest?: (info: RequestInfo & { secrets: SecretFinding[] }) => void;
   /** Where VANTAGE_DEBUG output goes; defaults to stderr. */
   log?: (msg: string) => void;
 }
@@ -101,18 +105,29 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     }
     // Parsed once, when the request is complete — a long session's body is
     // megabytes of history.
-    let info: RequestInfo | null = null;
-    const requestInfo = (): RequestInfo => {
-      if (!info) {
-        info =
-          captureReq && reqChunks.length > 0
-            ? extractRequestInfo(Buffer.concat(reqChunks).toString("utf8"))
-            : { prompt: null, background: false };
+    let parsed: unknown;
+    let parsedOnce = false;
+    const body = (): unknown => {
+      if (!parsedOnce) {
+        parsedOnce = true;
+        try {
+          parsed = captureReq && reqChunks.length > 0 ? JSON.parse(Buffer.concat(reqChunks).toString("utf8")) : undefined;
+        } catch {
+          parsed = undefined; // cut off at the capture limit
+        }
       }
-      return info;
+      return parsed;
     };
+    let info: RequestInfo | null = null;
+    const requestInfo = (): RequestInfo => (info ??= requestInfoFrom(body()));
     if (captureReq && opts.onRequest) {
-      clientReq.on("end", () => opts.onRequest?.(requestInfo()));
+      clientReq.on("end", () => {
+        try {
+          opts.onRequest?.({ ...requestInfo(), secrets: scanRequest(body()) });
+        } catch {
+          /* observation only; never break the request */
+        }
+      });
     }
 
     const upstreamReq = upstreamClient.request(

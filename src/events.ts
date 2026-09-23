@@ -74,7 +74,16 @@ export interface BudgetEvent {
   reason: string;
 }
 
-export type VantageEvent = UsageEvent | SessionEvent | RateLimitEvent | BudgetEvent | RequestEvent | DecisionEvent;
+/** Something that looks like a secret was sent to the API (never the value). */
+export interface SecretEvent {
+  ts: string;
+  type: "secret";
+  kind: string;
+  masked: string;
+  source: string;
+}
+
+export type VantageEvent = UsageEvent | SessionEvent | RateLimitEvent | BudgetEvent | RequestEvent | DecisionEvent | SecretEvent;
 
 export class EventLog {
   readonly filePath: string;
