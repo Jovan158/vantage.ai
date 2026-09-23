@@ -31,7 +31,7 @@ import { collectHarvest, renderHarvest, worthHarvesting } from "./harvest.ts";
 import { compileMemory, initMemory, addNote, memoryDir } from "./memory.ts";
 import { loadPolicy, PolicyWatcher, needsEnforcement } from "./policy.ts";
 import type { Policy } from "./policy.ts";
-import { runHook, hookSettings, hookInvocation } from "./hook.ts";
+import { runHook, hookSettings, hookInvocation, decisionRecord } from "./hook.ts";
 import { resolveCommand } from "./resolve.ts";
 import { TerminalGate } from "./terminal.ts";
 import {
@@ -255,12 +255,22 @@ async function cmdRun(argv: string[]): Promise<number> {
     createdAt: new Date().toISOString(),
   });
 
-  eventLog.append({ ts: new Date().toISOString(), type: "session_start", agent: adapter.id });
+  eventLog.append({
+    ts: new Date().toISOString(),
+    type: "session_start",
+    agent: adapter.id,
+    project: cwd,
+    ...(guard ? { budget } : {}),
+  });
   recordLastSession({ cwd, sessionId });
 
   const proxy = await startProxy({
     upstream,
     provider: adapter.provider,
+    // Lets watch say "Claude is thinking" while a chat turn is in flight.
+    onRequest: (info) => {
+      if (!info.background) eventLog.append({ ts: new Date().toISOString(), type: "request" });
+    },
     log: (msg) => terminal.info(`\x1b[2m[vantage:proxy]\x1b[0m ${msg}\n`),
     onUsage: (e: UsageEvent) => {
       eventLog.append(e);
@@ -308,6 +318,9 @@ async function cmdRun(argv: string[]): Promise<number> {
         .map(([t, l]) => `${t}:${l}`)
         .join(" ");
       if (enforced) log(`enforcing policy via ${adapter.id} PreToolUse hook — ${enforced}`);
+      // The hook records what it blocks or asks about, so watch and replay
+      // can show it next to the calls that went through.
+      hookEnv.VANTAGE_EVENTS_FILE = eventLog.filePath;
       if (guard) {
         hookEnv.VANTAGE_BUDGET_FILE = budgetStatePath(sessionDir(cwd, sessionId));
         log(`budget: every action needs approval once ${formatBudget(budget)} is reached`);
@@ -608,6 +621,7 @@ async function cmdWatch(argv: string[]): Promise<number> {
           sessionId: current.sessionId,
           project: path.resolve(current.cwd) === path.resolve(cwd) ? undefined : current.cwd,
           color: process.stdout.isTTY ?? false,
+          width: process.stdout.columns,
         })
       );
 
@@ -636,12 +650,19 @@ function policyToEnv(policy: Policy): string {
 async function cmdHook(): Promise<number> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  const out = runHook(
-    Buffer.concat(chunks).toString("utf8"),
-    loadPolicy(process.cwd()),
-    readBudgetState(process.env.VANTAGE_BUDGET_FILE)
-  );
+  const raw = Buffer.concat(chunks).toString("utf8");
+  const out = runHook(raw, loadPolicy(process.cwd()), readBudgetState(process.env.VANTAGE_BUDGET_FILE));
   if (out) process.stdout.write(out);
+  // Best effort: a log that cannot be written must never change the decision.
+  const record = decisionRecord(raw, out);
+  const eventsFile = process.env.VANTAGE_EVENTS_FILE;
+  if (record && eventsFile) {
+    try {
+      fs.appendFileSync(eventsFile, JSON.stringify(record) + "\n");
+    } catch {
+      /* the decision stands either way */
+    }
+  }
   return 0; // the JSON decides; exit 0 with no JSON = no decision
 }
 

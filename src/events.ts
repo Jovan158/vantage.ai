@@ -19,9 +19,16 @@ export interface UsageEvent {
   prompt?: string;
   text?: string;
   tools?: string[];
+  /** The same calls with what each acts on (file, command, URL). */
+  calls?: ToolCallRecord[];
   stopReason?: string | null;
   /** A call the agent made on its own, not a chat turn (see turn.ts). */
   background?: boolean;
+}
+
+export interface ToolCallRecord {
+  tool: string;
+  target?: string;
 }
 
 export interface SessionEvent {
@@ -29,6 +36,26 @@ export interface SessionEvent {
   type: "session_start" | "session_end";
   agent?: string;
   exitCode?: number | null;
+  /** session_start: the project directory. */
+  project?: string;
+  /** session_start: the budget set for this run, if any. */
+  budget?: { maxCostUsd: number | null; maxQuota: number | null };
+}
+
+/** A chat turn was sent; its usage event follows when the reply is done. */
+export interface RequestEvent {
+  ts: string;
+  type: "request";
+}
+
+/** The PreToolUse hook stopped or questioned a tool call. */
+export interface DecisionEvent {
+  ts: string;
+  type: "decision";
+  tool: string;
+  target?: string;
+  decision: "ask" | "deny";
+  reason: string;
 }
 
 export interface RateLimitEvent {
@@ -45,7 +72,7 @@ export interface BudgetEvent {
   reason: string;
 }
 
-export type VantageEvent = UsageEvent | SessionEvent | RateLimitEvent | BudgetEvent;
+export type VantageEvent = UsageEvent | SessionEvent | RateLimitEvent | BudgetEvent | RequestEvent | DecisionEvent;
 
 export class EventLog {
   readonly filePath: string;

@@ -39,6 +39,18 @@ function fmtTokens(n: number): string {
   return (n / 1_000_000).toFixed(1) + "M";
 }
 
+// Paths inside the project are shown relative to it; the log may come from
+// Windows or POSIX, so both separators count.
+export function relativeTarget(target: string, project: string | undefined): string {
+  if (!project) return target;
+  const root = project.replace(/[\\/]+$/, "");
+  const lower = (x: string): string => (/^[a-z]:/i.test(x) ? x.toLowerCase() : x);
+  if (lower(target).startsWith(lower(root)) && /[\\/]/.test(target.charAt(root.length))) {
+    return target.slice(root.length + 1);
+  }
+  return target;
+}
+
 export interface SessionSummary {
   sessionId: string;
   agent: string | null;
@@ -100,6 +112,7 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
   const startMs = start ? Date.parse(start.ts) : events[0] ? Date.parse(events[0].ts) : Date.now();
   const lines: string[] = [];
   let step = 0;
+  const project = start?.type === "session_start" ? start.project : undefined;
   let lastQuota: string | null = null;
   const allTools: string[] = [];
 
@@ -130,8 +143,11 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
         if (e.text) lines.push(`         ${c.dim}reply:${c.reset}  ${e.text}`);
         if (e.tools && e.tools.length) {
           allTools.push(...e.tools);
-          const counts = tally(e.tools);
-          lines.push(`         ${c.dim}tools:${c.reset}  ${counts}`);
+          // With targets when recorded: "Edit src/app.ts, Bash npm test".
+          const shown = e.calls
+            ? e.calls.map((k) => (k.target ? `${k.tool} ${relativeTarget(k.target, project)}` : k.tool)).join(", ")
+            : tally(e.tools);
+          lines.push(`         ${c.dim}tools:${c.reset}  ${shown}`);
         }
         break;
       }
@@ -144,6 +160,12 @@ export function renderTimeline(events: VantageEvent[], color = true): string {
         }
         break;
       }
+      case "decision":
+        lines.push(
+          `${at} ${e.decision === "deny" ? `${c.red}⛔ blocked` : `${c.yellow}? asked you about`}${c.reset} ` +
+            `${e.tool}${e.target ? ` ${relativeTarget(e.target, project)}` : ""} ${c.dim}· ${e.reason}${c.reset}`
+        );
+        break;
       case "budget":
         lines.push(
           e.state === "reached"

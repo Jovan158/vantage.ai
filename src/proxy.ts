@@ -54,6 +54,8 @@ export interface ProxyOptions {
   provider?: ProviderName;
   onUsage?: (event: UsageEvent) => void;
   onRateLimit?: (snapshot: RateLimitSnapshot) => void;
+  /** A request to an observed path has been fully received. */
+  onRequest?: (info: RequestInfo) => void;
   /** Where VANTAGE_DEBUG output goes; defaults to stderr. */
   log?: (msg: string) => void;
 }
@@ -97,10 +99,21 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
         }
       });
     }
+    // Parsed once, when the request is complete — a long session's body is
+    // megabytes of history.
+    let info: RequestInfo | null = null;
     const requestInfo = (): RequestInfo => {
-      if (!captureReq || reqChunks.length === 0) return { prompt: null, background: false };
-      return extractRequestInfo(Buffer.concat(reqChunks).toString("utf8"));
+      if (!info) {
+        info =
+          captureReq && reqChunks.length > 0
+            ? extractRequestInfo(Buffer.concat(reqChunks).toString("utf8"))
+            : { prompt: null, background: false };
+      }
+      return info;
     };
+    if (captureReq && opts.onRequest) {
+      clientReq.on("end", () => opts.onRequest?.(requestInfo()));
+    }
 
     const upstreamReq = upstreamClient.request(
       {
@@ -172,6 +185,9 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
             ...(background ? { background: true } : {}),
             ...(turn.text ? { text: turn.text } : {}),
             ...(turn.tools.length ? { tools: turn.tools.map((t) => t.name) } : {}),
+            ...(turn.tools.length
+              ? { calls: turn.tools.map((t) => ({ tool: t.name, ...(t.target ? { target: t.target } : {}) })) }
+              : {}),
             ...(turn.stopReason ? { stopReason: turn.stopReason } : {}),
           });
         };

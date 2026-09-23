@@ -11,6 +11,28 @@ import type { TokenUsage } from "./usage.ts";
 export interface ToolCall {
   name: string;
   inputPreview: string;
+  /** What the call acts on — a file, a command, a URL — for activity views. */
+  target?: string;
+}
+
+const MAX_TARGET = 80;
+
+// The one detail that says what a tool call does: the file for file tools,
+// the command for a shell, the URL for a fetch. Read from the full input
+// before any preview truncation, and redacted like every other preview.
+export function toolTarget(input: unknown): string | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const i = input as Record<string, unknown>;
+  for (const key of ["file_path", "notebook_path", "path", "command", "url", "query", "pattern", "description", "skill"]) {
+    const v = i[key];
+    if (typeof v === "string" && v.trim()) {
+      const one = redact(v).replace(/\s+/g, " ").trim();
+      if (one.length <= MAX_TARGET) return one;
+      // Paths keep their end (the file name), everything else its start.
+      return key.endsWith("path") ? "…" + one.slice(-(MAX_TARGET - 1)) : one.slice(0, MAX_TARGET - 1) + "…";
+    }
+  }
+  return undefined;
 }
 
 export interface TurnContent {
@@ -96,12 +118,15 @@ export function createTurnExtractor(): TurnExtractor {
     const t = toolsByIndex.get(index);
     if (!t) return;
     let preview = t.parts.join("");
+    let target: string | undefined;
     try {
-      preview = JSON.stringify(JSON.parse(preview));
+      const input = JSON.parse(preview);
+      preview = JSON.stringify(input);
+      target = toolTarget(input);
     } catch {
       /* keep raw partial */
     }
-    finished.push({ name: t.name, inputPreview: truncate(preview, MAX_INPUT) });
+    finished.push({ name: t.name, inputPreview: truncate(preview, MAX_INPUT), ...(target ? { target } : {}) });
     toolsByIndex.delete(index);
   }
 
@@ -193,7 +218,12 @@ export function extractTurnFromJson(body: string): TurnContent | null {
   for (const block of json.content ?? []) {
     if (block.type === "text" && block.text) text += block.text;
     else if (block.type === "tool_use") {
-      tools.push({ name: block.name ?? "tool", inputPreview: truncate(JSON.stringify(block.input ?? {}), MAX_INPUT) });
+      const target = toolTarget(block.input);
+      tools.push({
+        name: block.name ?? "tool",
+        inputPreview: truncate(JSON.stringify(block.input ?? {}), MAX_INPUT),
+        ...(target ? { target } : {}),
+      });
     }
   }
   return { model: usage.model, stopReason: json.stop_reason ?? null, text: truncate(text, MAX_TEXT), tools, usage };

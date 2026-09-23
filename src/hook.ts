@@ -16,6 +16,8 @@
 import { classifyTool } from "./policy.ts";
 import type { ActionType, Policy } from "./policy.ts";
 import type { BudgetState } from "./budget.ts";
+import type { DecisionEvent } from "./events.ts";
+import { toolTarget } from "./turn.ts";
 
 export interface HookInput {
   tool_name?: string;
@@ -104,6 +106,26 @@ export function runHook(rawInput: string, policy: Policy, budget: BudgetState | 
   if (!tool) return "";
   const output = buildOutput(decide(tool, policy, budget));
   return output ? JSON.stringify(output) : "";
+}
+
+// The event-log record of a decision the hook made, or null when it made
+// none. "allow" never happens (see decide), so every record is a stop or a
+// question the user should see in watch and replay.
+export function decisionRecord(rawInput: string, output: string, now = new Date()): DecisionEvent | null {
+  if (!output) return null;
+  const input = parseHookInput(rawInput);
+  const out = JSON.parse(output) as HookOutput;
+  const d = out.hookSpecificOutput.permissionDecision;
+  if (!input?.tool_name || (d !== "ask" && d !== "deny")) return null;
+  const target = toolTarget(input.tool_input);
+  return {
+    ts: now.toISOString(),
+    type: "decision",
+    tool: input.tool_name,
+    ...(target ? { target } : {}),
+    decision: d,
+    reason: out.hookSpecificOutput.permissionDecisionReason,
+  };
 }
 
 // How the agent should invoke this CLI's `hook` subcommand: node plus the entry

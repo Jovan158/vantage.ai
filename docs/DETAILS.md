@@ -140,20 +140,54 @@ bleiben beobachtend, und Vantage sagt das ausdrücklich statt Schutz vorzutäusc
 ## ③ Live-Ansicht und Replay
 
 **Live-Ansicht im zweiten Terminal — bewusst kein Overlay.** `vantage watch`
-zeigt die laufende Session live (Totals, Kosten, Rate, Quota, letzter Turn,
-Aktionen) und folgt automatisch einer Session, die erst nach dem Start beginnt:
+zeigt die laufende Session live und folgt automatisch der zuletzt gestarteten
+Session, auch aus einem anderen Ordner. Jede Zeile beantwortet eine Frage, die
+man mitten in der Arbeit hat: Was macht Claude gerade? Reicht mein Limit? Woran
+hat Claude gearbeitet? Was kostet das?
 
 ```
-● vantage · claude-code · running · 12s
-  turns  2   in 66   out 42   cache 66kr/0w
-  cost   ~$0.0208 (est.)   rate 1.8k/min
-  quota 5h 34% used reset 4h40m · 7d 16% used
+● vantage · running · 3m · claude-opus-5-5 · vantage.dev
+2026-09-23T12-00-00-000Z_ab12
 
-  latest turn claude-sonnet-5
-    prompt add a retry to the fetch helper
-    reply  I'll add exponential backoff.
-    tools  Read, Edit
+Waiting for your approval in Claude Code: Bash npm test
+
+Limits
+  5-hour  ███████████████░░░░░  74%  resets 15:00 (in 56m)
+  weekly  ███████░░░░░░░░░░░░░  35%  resets Thu 23:20 (in 1d 9h)
+  this session so far: +13% of the 5-hour limit
+  At this pace the 5-hour limit runs out around 14:09, before it resets.
+
+This session
+  work     1 message(s) from you  →  3 model call(s), 4 tool call(s)
+  cost     ~$0.2000 (est.)  API-equivalent; on your subscription the limits above count
+  budget   █░░░░░░░░░ 10% of $2
+  context  64k tokens sent with the last message  ·  90% of all input came from cache
+
+Latest
+  you     Füge einen Retry mit exponentiellem Backoff zum fetch-Helper hinzu und teste es
+  claude  Jetzt die Tests laufen lassen.
+
+Activity · read×2 · write×1 · shell×1 · 1 file(s) edited
+  14:00:09          Read      src/net/fetch.ts
+  14:00:09          Grep      fetchWithRetry
+  14:00:40          Edit      src/net/fetch.ts
+  14:03:20  asked   Bash      npm test
 ```
+
+- **Status:** „Claude is thinking…“ (Anfrage läuft), „Claude is working: Edit
+  src/app.ts“ (führt Tools aus), „Waiting for your approval“ (eine `ask`-Regel
+  oder ein Budget hat eine Rückfrage ausgelöst), „Claude replied — your turn“.
+- **Limits:** Balken grün/gelb/rot, Reset als Uhrzeit, der Anteil dieser Session
+  und eine Prognose: Reicht das aktuelle Tempo bis zum Reset? Die Fenster gelten
+  fürs ganze Konto, andere Claude-Nutzung zählt also mit.
+- **work:** Nachrichten von dir gegenüber Modellaufrufen — Claude ruft das Modell
+  nach jedem Tool erneut auf. Hintergrund-Aufrufe von Claude Code (z. B. „ist der
+  Agent fertig?“) zählen bei Kosten mit, nicht als Turn.
+- **context:** wie viele Tokens mit der letzten Nachricht mitgeschickt wurden, und
+  wie viel davon aus dem Cache kam (günstig).
+- **Activity:** die letzten Tool-Aufrufe mit Datei, Befehl oder URL — relativ zum
+  Projekt —, markiert, wenn Vantage blockiert (`blocked`) oder nachgefragt
+  (`asked`) hat.
 
 Warum kein Overlay über dem Agent? Der Agent besitzt sein Terminal (`stdio:
 "inherit"`) und bringt eine eigene TUI mit. Ein Overlay hieße: Vantage übernimmt

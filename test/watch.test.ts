@@ -42,21 +42,19 @@ const running: VantageEvent[] = [
   },
 ];
 
-test("live view shows state, totals, quota, actions and the latest turn", () => {
+test("live view: status, limits with reset, session numbers, latest exchange, activity", () => {
   const out = renderLive(running, { sessionId: "sess-1", nowMs: NOW, color: false });
-  assert.match(out, /vantage · claude-code · running/);
+  assert.match(out, /● vantage · running · 30s · claude-sonnet-5/);
   assert.match(out, /sess-1/);
-  assert.match(out, /turns\s+1/);
-  assert.match(out, /out 120/);
-  assert.match(out, /cache 50kr\/2\.0kw/);
-  assert.match(out, /~\$0\.0310/);
-  assert.match(out, /quota 5h 42% used/);
-  assert.match(out, /actions read×1 · write×1/);
-  assert.match(out, /latest turn claude-sonnet-5/);
-  assert.match(out, /add a retry to the fetch helper/);
-  assert.match(out, /exponential backoff/);
-  assert.match(out, /tools\s+Read, Edit/);
-  assert.match(out, /watching…/);
+  assert.match(out, /Claude replied — your turn\. 27s ago/);
+  assert.match(out, /5-hour\s+█{8}░{12}\s+42%\s+resets \d\d:\d\d \(in 2h\)/);
+  assert.match(out, /1 message\(s\) from you\s+→\s+1 model call\(s\), 2 tool call\(s\)/);
+  assert.match(out, /~\$0\.0310 \(est\.\)\s+API-equivalent/);
+  assert.match(out, /context\s+52k tokens sent with the last message/);
+  assert.match(out, /you\s+add a retry to the fetch helper/);
+  assert.match(out, /claude\s+I'll add exponential backoff\./);
+  assert.match(out, /Activity · read×1 · write×1/);
+  assert.match(out, /Ctrl-C stops watching — Claude keeps running/);
   assert.doesNotMatch(out, /\x1b\[/, "no ANSI when color is off");
 });
 
@@ -64,8 +62,95 @@ test("live view reports a finished session with its exit code", () => {
   const ended: VantageEvent[] = [...running, { ts: t(10), type: "session_end", exitCode: 0 }];
   const out = renderLive(ended, { sessionId: "sess-1", nowMs: NOW, color: false });
   assert.match(out, /ended \(exit 0\)/);
-  assert.match(out, /session finished/);
-  assert.doesNotMatch(out, /watching…/);
+  assert.match(out, /vantage replay sess-1/);
+  assert.doesNotMatch(out, /Ctrl-C/);
+});
+
+const turn = (secs: number, over: Partial<Extract<VantageEvent, { type: "usage" }>>): VantageEvent => ({
+  ts: t(secs),
+  type: "usage",
+  path: "/v1/messages",
+  model: "claude-opus-5-5",
+  in: 2,
+  out: 50,
+  cache_read: 60_000,
+  cache_write: 0,
+  cost_usd: 0.02,
+  ...over,
+});
+
+test("status says what Claude is doing: thinking, working, waiting for approval", () => {
+  const base: VantageEvent[] = [{ ts: t(0), type: "session_start", agent: "claude-code", project: "/home/me/app" }];
+  const thinking = [...base, { ts: t(20), type: "request" } as VantageEvent];
+  assert.match(renderLive(thinking, { sessionId: "s", nowMs: NOW, color: false }), /Claude is thinking… 10s/);
+
+  const working = [
+    ...base,
+    turn(21, { prompt: "fix it", stopReason: "tool_use", tools: ["Edit"], calls: [{ tool: "Edit", target: "/home/me/app/src/a.ts" }] }),
+  ];
+  const w = renderLive(working, { sessionId: "s", nowMs: NOW, color: false });
+  assert.match(w, /Claude is working: Edit src\/a\.ts/, "paths inside the project are relative");
+  assert.match(w, /Activity · write×1 · 1 file\(s\) edited/);
+
+  const asking = [...working, { ts: t(22), type: "decision", tool: "Edit", target: "/home/me/app/src/a.ts", decision: "ask", reason: "r" } as VantageEvent];
+  const a = renderLive(asking, { sessionId: "s", nowMs: NOW, color: false });
+  assert.match(a, /Waiting for your approval in Claude Code: Edit src\/a\.ts/);
+  assert.match(a, /asked\s+Edit\s+src\/a\.ts/, "the decision marks the call, not a second entry");
+  assert.equal(a.match(/src\/a\.ts/g)?.length, 2, "status line + one activity entry");
+});
+
+test("a decision logged before its turn (the hook runs mid-stream) is one entry, and the question stays open", () => {
+  const events: VantageEvent[] = [
+    { ts: t(0), type: "session_start", agent: "claude-code", project: "/p" },
+    { ts: t(1), type: "request" },
+    { ts: t(3), type: "decision", tool: "Bash", target: "node app.js", decision: "ask", reason: "r" },
+    turn(4, { prompt: "run it", stopReason: "tool_use", tools: ["Bash"], calls: [{ tool: "Bash", target: "node app.js" }] }),
+  ];
+  const out = renderLive(events, { sessionId: "s", nowMs: NOW, color: false });
+  assert.match(out, /Waiting for your approval in Claude Code: Bash node app\.js/);
+  assert.equal(out.match(/node app\.js/g)?.length, 2, "status line + a single activity entry");
+  // Answered: Claude continues with its next request.
+  const answered = [...events, { ts: t(8), type: "request" } as VantageEvent];
+  assert.match(renderLive(answered, { sessionId: "s", nowMs: NOW, color: false }), /Claude is thinking…/);
+});
+
+test("a message is counted once across Claude's tool loop", () => {
+  const loop: VantageEvent[] = [
+    { ts: t(0), type: "session_start", agent: "claude-code" },
+    turn(2, { prompt: "add tests", stopReason: "tool_use", tools: ["Read"] }),
+    turn(4, { prompt: "add tests", stopReason: "tool_use", tools: ["Write"] }),
+    turn(6, { prompt: "add tests", stopReason: "end_turn" }),
+    turn(9, { prompt: "now run them", stopReason: "end_turn" }),
+  ];
+  assert.match(renderLive(loop, { sessionId: "s", nowMs: NOW, color: false }), /2 message\(s\) from you\s+→\s+4 model call\(s\), 2 tool call\(s\)/);
+});
+
+test("limits: share of this session, and a warning when the pace runs out before the reset", () => {
+  const reset = String(Math.floor(Date.parse(T0) / 1000) + 7200); // 2 hours after start
+  const rl = (secs: number, u: number): VantageEvent => ({
+    ts: t(secs),
+    type: "ratelimit",
+    path: "/",
+    raw: { "anthropic-ratelimit-unified-5h-utilization": String(u), "anthropic-ratelimit-unified-5h-reset": reset },
+  });
+  // +20% in 25 minutes: the 30% left runs out in ~38 minutes, the reset is ~95 minutes away.
+  const fast: VantageEvent[] = [{ ts: t(0), type: "session_start", agent: "claude-code" }, rl(0, 0.5), rl(1500, 0.7)];
+  const out = renderLive(fast, { sessionId: "s", nowMs: Date.parse(T0) + 1500_000, color: false });
+  assert.match(out, /this session so far: \+20% of the 5-hour limit/);
+  assert.match(out, /At this pace the 5-hour limit runs out around \d\d:\d\d, before it resets\./);
+
+  const slow: VantageEvent[] = [{ ts: t(0), type: "session_start", agent: "claude-code" }, rl(0, 0.5), rl(1500, 0.51)];
+  assert.match(renderLive(slow, { sessionId: "s", nowMs: Date.parse(T0) + 1500_000, color: false }), /at this pace it lasts until the reset/);
+});
+
+test("budget progress is shown, and a reached budget stands out", () => {
+  const withBudget: VantageEvent[] = [
+    { ts: t(0), type: "session_start", agent: "claude-code", budget: { maxCostUsd: 1, maxQuota: null } },
+    turn(2, { prompt: "go", cost_usd: 0.25 }),
+  ];
+  assert.match(renderLive(withBudget, { sessionId: "s", nowMs: NOW, color: false }), /budget\s+███░{7} 25% of \$1/);
+  const reached = [...withBudget, { ts: t(3), type: "budget", state: "reached", reason: "r" } as VantageEvent];
+  assert.match(renderLive(reached, { sessionId: "s", nowMs: NOW, color: false }), /Budget reached — every action now needs your approval\./);
 });
 
 test("newestSessionId picks the latest and readSessionEvents parses the log", () => {
@@ -117,9 +202,9 @@ test("latest turn skips the agent's background calls; totals still count them", 
     },
   ];
   const frame = renderLive(withBackground, { sessionId: "s1", nowMs: NOW, color: false });
-  assert.match(frame, /prompt add a retry to the fetch helper/);
+  assert.match(frame, /you\s+add a retry to the fetch helper/);
   assert.doesNotMatch(frame, /Current state/);
-  assert.match(frame, /turns\s+1/); // one chat turn…
+  assert.match(frame, /1 model call\(s\)/); // one chat turn…
   assert.match(frame, /~\$0\.0320/); // …but both requests are in the cost
 });
 
