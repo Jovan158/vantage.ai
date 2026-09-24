@@ -21,6 +21,7 @@ import { toolTarget } from "./turn.ts";
 import { matchRules, type Rule } from "./rules.ts";
 
 export interface HookInput {
+  hook_event_name?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
   session_id?: string;
@@ -123,6 +124,15 @@ export function runHook(rawInput: string, policy: Policy, budget: BudgetState | 
   return output ? JSON.stringify(output) : "";
 }
 
+// Adds waiting alerts to the hook's answer as a systemMessage, which Claude
+// Code shows in the chat. With no decision, the answer is the message alone.
+export function withAlerts(output: string, message: string): string {
+  if (!message) return output;
+  const obj = output ? (JSON.parse(output) as Record<string, unknown>) : {};
+  obj.systemMessage = message;
+  return JSON.stringify(obj);
+}
+
 // The event-log record of a decision the hook made, or null when it made
 // none. "allow" never happens (see decide), so every record is a stop or a
 // question the user should see in watch and replay.
@@ -160,18 +170,16 @@ export function hookInvocation(execPath: string, entry: string): HookInvocation 
   return { command: execPath, args: [...strip, entry, "hook"] };
 }
 
-// The settings fragment that registers this hook. Claude Code merges
+// The settings fragment that registers the hooks. Claude Code merges
 // `--settings` with the user's own files and COMBINES list keys such as
-// hooks.PreToolUse, so this adds our hook without removing theirs.
-export function hookSettings(inv: HookInvocation): object {
-  return {
-    hooks: {
-      PreToolUse: [
-        {
-          matcher: "*",
-          hooks: [{ type: "command", command: inv.command, args: inv.args }],
-        },
-      ],
-    },
-  };
+// hooks.PreToolUse, so this adds our hooks without removing theirs.
+//   PreToolUse  judges each tool call (rules, budget)
+//   Stop        runs when a reply is finished, to show waiting alerts in the
+//               chat (see src/outbox.ts)
+export function hookSettings(inv: HookInvocation, events: { preToolUse?: boolean; stop?: boolean } = { preToolUse: true }): object {
+  const hook = { type: "command", command: inv.command, args: inv.args };
+  const hooks: Record<string, object[]> = {};
+  if (events.preToolUse) hooks.PreToolUse = [{ matcher: "*", hooks: [hook] }];
+  if (events.stop) hooks.Stop = [{ hooks: [hook] }];
+  return { hooks };
 }

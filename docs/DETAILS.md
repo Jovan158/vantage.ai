@@ -203,9 +203,26 @@ offen ist, schreibt `vantage run` **gar nichts** in dieses Terminal. Eine frühe
 Version gab nach jeder Antwort eine Statuszeile aus; die landete irgendwo in der
 Oberfläche, verdeckte das Eingabefeld und verschwand beim nächsten Neuzeichnen.
 Jetzt entfallen Routinezeilen (sie stehen in `vantage watch`), und Warnungen —
-Quota, Budget, Policy — werden gesammelt und nach dem Beenden unter „during the
-session:“ ausgegeben. Im Druckmodus (`claude -p`) gibt es keine Oberfläche, dort
-bleibt die Ausgabe wie gehabt (`src/terminal.ts`).
+Geheimnisse, Quota, Budget, Policy — erscheinen **im Chat von Claude Code
+selbst**, direkt nach der Antwort:
+
+```
+● DONE
+  ⎿  Stop says: Vantage ALERT: a value of DB_PASSWORD (Xk9v…(12 chars)) was sent
+     to the API, from the output of Read .env — rotate it if it should not leave
+     your machine
+```
+
+Dafür registriert `vantage run` im interaktiven Modus einen `Stop`-Hook, den
+Claude Code nach jeder fertigen Antwort startet. `vantage run` legt jede Warnung
+in einem Postfach im Session-Ordner ab (`outbox.jsonl`); der Hook holt sie ab
+und gibt sie als `systemMessage` zurück — Claude Codes offizieller Weg, dem
+Nutzer etwas zu zeigen. Vantage schreibt dabei nie selbst ins Terminal. Werden
+Regeln oder ein Budget durchgesetzt, liefert auch der `PreToolUse`-Hook
+wartende Warnungen mit, also schon vor dem nächsten Tool. Was beim Beenden noch
+im Postfach liegt, wird dann unter „during the session:“ ausgegeben. Im
+Druckmodus (`claude -p`) gibt es keine Oberfläche, dort gehen Warnungen wie
+gehabt direkt ins Terminal (`src/terminal.ts`, `src/outbox.ts`).
 
 **Session-Replay (Problem ③).** `vantage replay <id>` rendert den Event-Log als
 lesbare Timeline — jeder Turn mit Modell/Tokens/Kosten **und Inhalt** (letzter
@@ -355,6 +372,7 @@ weiterer Agent ist additiv — kein Eingriff in den Kern.
 | `src/stats.ts`, `src/search.ts` | `vantage stats` und `vantage search` über alle Sessions |
 | `src/doctor.ts` | `vantage doctor`: Prüfung der Einrichtung |
 | `src/terminal.ts` | Hält Ausgaben zurück, solange Claude Codes Chat-Oberfläche offen ist |
+| `src/outbox.ts` | Postfach für Warnungen, die der Stop-Hook im Chat von Claude Code anzeigt |
 | `src/resolve.ts` | Findet die ausführbare Datei des Agents (auch npm-`.cmd`-Shims unter Windows) |
 | `src/pricing.ts`, `src/pricing-source.ts`, `src/pricing-snapshot.ts` | Preise: Lookup, Parser der offiziellen Liste, generierter Stand |
 | `src/providers/` | Provider-Schicht (derzeit nur Anthropic) hinter einem Interface |

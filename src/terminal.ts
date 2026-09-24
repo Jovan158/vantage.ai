@@ -8,8 +8,10 @@
 //
 //   - routine lines (the per-request status) are dropped; `vantage watch`
 //     shows the same numbers live in a second terminal;
-//   - alerts (quota, budget, policy notices) are held and printed once the
-//     agent exits, so none is lost.
+//   - alerts (quota, budget, secrets, policy notices) are shown in Claude
+//     Code's chat instead, through its own hooks (src/outbox.ts); any that are
+//     left, or that come up where no hook can show them, are held here and
+//     printed once the agent exits, so none is lost.
 //
 // In print mode (`claude -p`) there is no redrawing UI, and output goes
 // through as it always did.

@@ -16,6 +16,8 @@ import { compileMemory } from "../memory.ts";
 import { loadPolicy, PolicyWatcher, needsEnforcement, type Policy } from "../policy.ts";
 import { loadRules, policyFilePath } from "../rules.ts";
 import { hookSettings, hookInvocation } from "../hook.ts";
+import { outboxPath, postAlert, takeAlerts } from "../outbox.ts";
+import type { QuotaWarning } from "../ratelimit.ts";
 import { resolveCommand } from "../resolve.ts";
 import {
   BudgetGuard,
@@ -121,19 +123,30 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
   const rules = loadRules(policyFilePath(cwd));
   const policy = new PolicyWatcher(effectivePolicy);
   const guard = hasBudget(budget) ? new BudgetGuard(budget, budgetStatePath(sessionDir(cwd, sessionId))) : null;
-  const inflight = guard ? new InflightCounter(inflightPath(sessionDir(cwd, sessionId))) : null;
 
-  // Claude Code's chat UI owns the terminal from launch until exit; Vantage
-  // then speaks through `vantage watch` only, and alerts wait until the end.
+  // Claude Code's chat UI owns the terminal from launch until exit. Vantage
+  // then shows alerts in that chat, through a hook Claude Code runs after
+  // each reply (see src/outbox.ts); live numbers are in `vantage watch`.
   const interactive = adapter.isInteractive(agentArgs) && Boolean(process.stderr.isTTY);
+  const chatAlerts = interactive && Boolean(adapter.enforcementArgs);
+  const outbox = chatAlerts ? outboxPath(sessionDir(cwd, sessionId)) : null;
+  // Exchanges in flight, so a hook can wait until the reply before it is
+  // metered: the budget check, and alerts that reply caused.
+  const inflight = guard || chatAlerts ? new InflightCounter(inflightPath(sessionDir(cwd, sessionId))) : null;
   const seenSecrets = new Set<string>();
 
+  // An alert goes to the chat while Claude Code's UI is open, else to stderr.
+  const alert = (w: QuotaWarning): void => {
+    if (outbox && terminal.isHolding) postAlert(outbox, w);
+    else warn(w);
+  };
+
   const onBudget = (change: BudgetChange | null, notes: string[]): void => {
-    for (const note of notes) warn({ key: "budget", level: "warn", message: `budget: ${note}` });
+    for (const note of notes) alert({ key: "budget", level: "warn", message: `budget: ${note}` });
     if (!change) return;
     eventLog.append({ ts: new Date().toISOString(), type: "budget", state: change.kind, reason: change.reason });
     if (change.kind === "reached") {
-      warn({ key: "budget", level: "critical", message: `budget reached — ${change.reason}. Every action now needs your approval.` });
+      alert({ key: "budget", level: "critical", message: `budget reached — ${change.reason}. Every action now needs your approval.` });
     } else {
       log(`budget: ${change.reason} — actions run as before`);
     }
@@ -200,7 +213,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
         const source = shortenPaths(f.source, cwd);
         const article = /^[aeiou]/i.test(f.kind) ? "an" : "a";
         const message = `${article} ${f.kind} (${f.masked}) was sent to the API, from ${source} — rotate it if it should not leave your machine`;
-        warn({ key: `secret:${f.fingerprint}`, level: "critical", message });
+        alert({ key: `secret:${f.fingerprint}`, level: "critical", message });
       }
       if (info.background) return;
       eventLog.append({ ts: new Date().toISOString(), type: "request" });
@@ -219,7 +232,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
       if (rl) log(rl);
       if (e.tools) {
         for (const notice of policy.observe(e.tools)) {
-          warn({ key: notice.type, level: "warn", message: `policy: ${notice.message}` });
+          alert({ key: notice.type, level: "warn", message: `policy: ${notice.message}` });
         }
       }
     },
@@ -231,7 +244,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
         path: "/",
         raw: snapshot.raw,
       });
-      for (const w of quota.update(snapshot)) warn(w);
+      for (const w of quota.update(snapshot)) alert(w);
       if (guard) onBudget(guard.onQuota(snapshot), guard.blindSpots([], snapshot));
     },
   });
@@ -239,34 +252,41 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
   // Enforce action-type policy through the agent's PreToolUse hook (②). Only
   // the agent can stop a tool it is about to run — the proxy never sees the
   // execution. Agents without a hook mechanism stay observe-only, said plainly.
+  // The Stop hook carries alerts into the chat.
   let finalArgs = agentArgs;
   const hookEnv: Record<string, string> = {};
   const enforcingRules = rules.filter((r) => r.level === "ask" || r.level === "deny");
-  if (needsEnforcement(effectivePolicy) || enforcingRules.length > 0 || guard) {
-    if (adapter.enforcementArgs) {
-      const settingsFile = writeHookSettings(cwd, sessionId, entry);
-      finalArgs = [...adapter.enforcementArgs(settingsFile), ...finalArgs];
-      // Pass the resolved policy explicitly: the hook runs with the agent's cwd
-      // (a worktree under --isolate), which may not hold .vantage/policy.json.
-      hookEnv.VANTAGE_POLICY = policyToEnv(effectivePolicy);
-      // Rules are read from the project's file, wherever the agent runs.
-      hookEnv.VANTAGE_POLICY_FILE = policyFilePath(cwd);
-      const enforced = Object.entries(effectivePolicy)
-        .filter(([, l]) => l === "ask" || l === "deny")
-        .map(([t, l]) => `${t}:${l}`)
-        .join(" ");
-      if (enforced) log(`enforcing policy via ${adapter.id} PreToolUse hook — ${enforced}`);
-      if (enforcingRules.length) log(`enforcing ${enforcingRules.length} file/command rule(s) from .vantage/policy.json`);
-      // The hook records what it blocks or asks about, so watch and replay
-      // can show it next to the calls that went through.
-      hookEnv.VANTAGE_EVENTS_FILE = eventLog.filePath;
-      if (guard) {
-        hookEnv.VANTAGE_BUDGET_FILE = budgetStatePath(sessionDir(cwd, sessionId));
-        hookEnv.VANTAGE_INFLIGHT_FILE = inflightPath(sessionDir(cwd, sessionId));
-        log(`budget: every action needs approval once ${formatBudget(budget)} is reached`);
-      }
-    } else {
-      log(`policy or budget needs enforcement, but ${adapter.id} exposes no hook mechanism — observe-only`);
+  const enforce = needsEnforcement(effectivePolicy) || enforcingRules.length > 0 || guard !== null;
+  if (enforce && !adapter.enforcementArgs) {
+    log(`policy or budget needs enforcement, but ${adapter.id} exposes no hook mechanism — observe-only`);
+  }
+  if (outbox) {
+    hookEnv.VANTAGE_OUTBOX_FILE = outbox;
+    hookEnv.VANTAGE_INFLIGHT_FILE = inflightPath(sessionDir(cwd, sessionId));
+  }
+  if ((enforce || chatAlerts) && adapter.enforcementArgs) {
+    const settingsFile = writeHookSettings(cwd, sessionId, entry, { preToolUse: enforce, stop: chatAlerts });
+    finalArgs = [...adapter.enforcementArgs(settingsFile), ...finalArgs];
+  }
+  if (enforce && adapter.enforcementArgs) {
+    // Pass the resolved policy explicitly: the hook runs with the agent's cwd
+    // (a worktree under --isolate), which may not hold .vantage/policy.json.
+    hookEnv.VANTAGE_POLICY = policyToEnv(effectivePolicy);
+    // Rules are read from the project's file, wherever the agent runs.
+    hookEnv.VANTAGE_POLICY_FILE = policyFilePath(cwd);
+    const enforced = Object.entries(effectivePolicy)
+      .filter(([, l]) => l === "ask" || l === "deny")
+      .map(([t, l]) => `${t}:${l}`)
+      .join(" ");
+    if (enforced) log(`enforcing policy via ${adapter.id} PreToolUse hook — ${enforced}`);
+    if (enforcingRules.length) log(`enforcing ${enforcingRules.length} file/command rule(s) from .vantage/policy.json`);
+    // The hook records what it blocks or asks about, so watch and replay
+    // can show it next to the calls that went through.
+    hookEnv.VANTAGE_EVENTS_FILE = eventLog.filePath;
+    if (guard) {
+      hookEnv.VANTAGE_BUDGET_FILE = budgetStatePath(sessionDir(cwd, sessionId));
+      hookEnv.VANTAGE_INFLIGHT_FILE = inflightPath(sessionDir(cwd, sessionId));
+      log(`budget: every action needs approval once ${formatBudget(budget)} is reached`);
     }
   }
 
@@ -286,12 +306,14 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
   // A launch that never gets going must still end its session — otherwise
   // `watch` shows it as running forever — and must not leave an empty
   // isolation worktree behind.
-  // Ends the quiet period and prints the alerts held back meanwhile.
+  // Ends the quiet period and prints the alerts not shown in the chat yet.
   const releaseTerminal = (): void => {
     const held = terminal.release();
-    if (held.length === 0) return;
+    const waiting = takeAlerts(outbox ?? undefined);
+    if (held.length === 0 && waiting.length === 0) return;
     log("during the session:");
     for (const line of held) terminal.alert(line);
+    for (const a of waiting) warn({ key: a.message, ...a });
   };
 
   const failLaunch = async (reason: string): Promise<number> => {
@@ -326,7 +348,11 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
   // written now would land inside that UI, so live numbers go to
   // `vantage watch` and alerts wait until the end.
   if (interactive) {
-    log("live view: run `vantage watch` in a second terminal — Vantage stays quiet here until Claude Code exits");
+    log(
+      chatAlerts
+        ? "live view: run `vantage watch` in a second terminal — alerts appear in Claude Code's chat"
+        : "live view: run `vantage watch` in a second terminal — Vantage stays quiet here until Claude Code exits"
+    );
     terminal.hold();
   }
 
@@ -436,11 +462,11 @@ function printIsolatedChanges(sessionId: string, worktree: Worktree, diff: Sessi
 // Write a session-scoped settings file registering the PreToolUse hook.
 // Claude Code merges --settings with the user's own settings and combines list
 // keys, so this adds our hook without disturbing theirs.
-function writeHookSettings(cwd: string, sessionId: string, entry: string): string {
+function writeHookSettings(cwd: string, sessionId: string, entry: string, events: { preToolUse: boolean; stop: boolean }): string {
   const file = path.join(sessionDir(cwd, sessionId), "hook-settings.json");
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const inv = hookInvocation(process.execPath, entry);
-  fs.writeFileSync(file, JSON.stringify(hookSettings(inv), null, 2));
+  fs.writeFileSync(file, JSON.stringify(hookSettings(inv, events), null, 2));
   return file;
 }
 
