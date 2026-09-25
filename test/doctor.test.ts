@@ -24,7 +24,7 @@ test("Claude Code: started for its version, or a clear failure", () => {
   // node stands in for Claude Code: it answers --version too.
   const ok = checkClaude({ cwd, entry, env: { ...process.env, VANTAGE_AGENT_PATH: process.execPath } });
   assert.equal(ok.level, "ok");
-  assert.match(ok.text, /v\d+\.\d+.*via VANTAGE_AGENT_PATH/);
+  assert.match(ok.text, /^Claude Code \d+\.\d+.*via VANTAGE_AGENT_PATH/);
 
   const missing = checkClaude({ cwd, entry, env: { ...process.env, VANTAGE_AGENT_PATH: path.join(cwd, "nope.exe") } });
   assert.equal(missing.level, "fail");

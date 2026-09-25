@@ -188,12 +188,20 @@ const codex: HookProtocol = { ask: "none", parse: claudeParse, reply: (c, a) => 
 
 // Copilot CLI: hooks registered under the PascalCase names get Claude's
 // payload and tool names. Its documented answer puts the decision at the top
-// level; the Claude shape is sent alongside for the same reason.
+// level; the Claude shape is sent alongside for the same reason. Messages
+// for the user go in "progress" lines before the answer, which it shows in
+// its timeline.
 const copilot: HookProtocol = {
   ask: "agent",
   parse: claudeParse,
-  reply: (c, a) =>
-    claudeReply(c, a, a.decision && c.event === "tool" ? { permissionDecision: a.decision, permissionDecisionReason: a.reason } : {}),
+  reply(c, a) {
+    const progress = a.alerts ? a.alerts.split("\n").map((message) => JSON.stringify({ type: "progress", message })) : [];
+    const decision =
+      c.event === "tool" && a.decision
+        ? claudeReply(c, { ...a, alerts: "" }, { permissionDecision: a.decision, permissionDecisionReason: a.reason }).stdout
+        : "";
+    return { stdout: [...progress, decision].filter(Boolean).join("\n"), exitCode: 0 };
+  },
 };
 
 // OpenCode: Vantage's plugin speaks Claude's contract. A plugin can stop a

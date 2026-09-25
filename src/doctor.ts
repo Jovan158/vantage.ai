@@ -1,6 +1,6 @@
 // `vantage doctor`: is everything Vantage relies on in place on this machine?
 //
-// Each check runs the real thing where it can — starts Claude Code for its
+// Each check runs the real thing where it can — starts each agent for its
 // version, runs the registered hook the way Claude Code would — so a pass
 // means it works, not just that a file exists. Every problem comes with what
 // to do about it.
@@ -13,6 +13,8 @@ import { hookInvocation } from "./hook.ts";
 import { loadRules, policyFilePath } from "./rules.ts";
 import { activePrices, STALE_AFTER_DAYS } from "./pricing.ts";
 import { vantageHome, knownSessions, sessionRunning } from "./home.ts";
+import { AGENTS, type AgentAdapter } from "./agents/index.ts";
+import { setupState } from "./setup.ts";
 
 export type CheckLevel = "ok" | "warn" | "fail" | "info";
 
@@ -46,24 +48,58 @@ export function checkNode(version = process.versions.node): Check {
     : { level: "fail", text: `Node.js ${version} is too old`, hint: "install Node.js 22.6 or newer" };
 }
 
-export function checkClaude(opts: DoctorOptions): Check {
+// Is the agent installed and does it start? `required`: a missing agent is
+// a problem (it was asked about, or it is the only one) rather than a note.
+export function checkAgent(adapter: AgentAdapter, opts: DoctorOptions, required = true): Check {
   const env = opts.env ?? process.env;
   const override = env.VANTAGE_AGENT_PATH;
   if (override && !fs.existsSync(override)) {
     return { level: "fail", text: `VANTAGE_AGENT_PATH points at ${override}, which does not exist`, hint: "fix or unset VANTAGE_AGENT_PATH" };
   }
-  const target = resolveCommand(override || "claude", { env, platform: opts.platform });
+  const target = resolveCommand(override || adapter.command, { env, platform: opts.platform });
   if (!target.ok) {
-    return { level: "fail", text: "Claude Code not found", hint: `${target.reason} — install it (npm install -g @anthropic-ai/claude-code) or set VANTAGE_AGENT_PATH` };
+    return required
+      ? { level: "fail", text: `${adapter.name} not found`, hint: `${target.reason} — install it (${adapter.install}) or set VANTAGE_AGENT_PATH` }
+      : { level: "info", text: `${adapter.name} not installed` };
   }
   const r = spawnSync(target.resolved.command, [...target.resolved.prefix, "--version"], { env, encoding: "utf8", timeout: 20_000, windowsHide: true });
   if (r.error || r.status !== 0) {
-    const why = r.error ? (r.error as NodeJS.ErrnoException).code === "ENOENT" ? "not found on PATH" : r.error.message : firstLine(r.stderr) || `exit ${r.status}`;
-    return { level: "fail", text: `Claude Code could not be started (${why})`, hint: "install Claude Code or set VANTAGE_AGENT_PATH to its executable" };
+    const missing = (r.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
+    if (missing && !required) return { level: "info", text: `${adapter.name} not installed` };
+    const why = r.error ? (missing ? "not found on PATH" : r.error.message) : firstLine(r.stderr) || `exit ${r.status}`;
+    return { level: "fail", text: `${adapter.name} could not be started (${why})`, hint: `install it (${adapter.install}) or set VANTAGE_AGENT_PATH to its executable` };
   }
-  const where = override ? ` via VANTAGE_AGENT_PATH` : target.resolved.command === "claude" ? "" : ` (${target.resolved.command})`;
-  const version = firstLine(r.stdout).replace(/\s*\(Claude Code\)$/, "");
-  return { level: "ok", text: `Claude Code ${version}${where}` };
+  const where = override ? ` via VANTAGE_AGENT_PATH` : target.resolved.command === adapter.command ? "" : ` (${target.resolved.command})`;
+  // Agents print their version in their own words; the number is enough.
+  const line = firstLine(r.stdout);
+  const version = /\d+\.\d+(?:\.\d+)?(?:[-+][\w.]+)?/.exec(line)?.[0] ?? line;
+  const setup = adapter.capabilities.setup ? checkSetup(adapter, opts) : null;
+  const check: Check = { level: "ok", text: `${adapter.name} ${version}${where}` };
+  if (setup) Object.assign(check, setup);
+  return check;
+}
+
+// An agent whose hook is set up once: is it, and for this Vantage?
+function checkSetup(adapter: AgentAdapter, opts: DoctorOptions): Partial<Check> | null {
+  const s = setupState(adapter.key, opts.entry);
+  if (!s.installed) return { level: "warn", hint: `its hook is not set up, so rules, budgets and alerts are off: vantage setup ${adapter.key}` };
+  if (s.stale) return { level: "warn", hint: `its hook runs another Vantage (moved or reinstalled): vantage setup ${adapter.key}` };
+  return null;
+}
+
+export function checkClaude(opts: DoctorOptions): Check {
+  return checkAgent(AGENTS[0]!, opts);
+}
+
+// Every agent Vantage knows: the ones installed, and a note for the rest.
+// Without any installed agent there is nothing to run.
+export function checkAgents(opts: DoctorOptions): Check[] {
+  const env = { ...(opts.env ?? process.env), VANTAGE_AGENT_PATH: "" };
+  const checks = AGENTS.map((a) => checkAgent(a, { ...opts, env }, false));
+  if (checks.every((c) => c.level === "info")) {
+    return [{ level: "fail", text: "no coding agent found", hint: `install one, e.g. ${AGENTS[0]!.install}` }, ...checks];
+  }
+  return checks;
 }
 
 // Runs the hook exactly as registered for Claude Code (exec form, no shell)
@@ -136,10 +172,11 @@ export function checkSessions(opts: DoctorOptions): Check {
   return { level: "info", text: `${all.length} session(s) recorded, ${running} running` };
 }
 
-export function runDoctor(opts: DoctorOptions): Check[] {
+// `agent`: only that one, required; otherwise all of them.
+export function runDoctor(opts: DoctorOptions, agent?: AgentAdapter): Check[] {
   return [
     checkNode(),
-    checkClaude(opts),
+    ...(agent ? [checkAgent(agent, opts)] : checkAgents(opts)),
     checkHook(opts),
     checkGit(opts),
     checkHome(),
