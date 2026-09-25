@@ -68,7 +68,14 @@ function mask(value: string): string {
   return `${value.slice(0, 4)}…(${value.length} chars)`;
 }
 
-export function scanText(text: string, source: string): SecretFinding[] {
+// A UTF-16 file — what `>` and Out-File write in Windows PowerShell 5.1 —
+// reaches the API as text with a NUL after every character and its
+// byte-order mark as replacement characters: "��D\0B\0_\0P\0…". Neither can
+// be part of a secret, so both are dropped before matching.
+const NOT_TEXT = /[\u0000\uFEFF\uFFFD]/g;
+
+export function scanText(raw: string, source: string): SecretFinding[] {
+  const text = raw.replace(NOT_TEXT, "");
   const out: SecretFinding[] = [];
   for (const p of PATTERNS) {
     p.re.lastIndex = 0;

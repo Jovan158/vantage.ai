@@ -31,6 +31,15 @@ test(".env-style assignments, also in Read's numbered output", () => {
   assert.equal(found[0]!.masked, "hunt…(14 chars)");
 });
 
+test("a UTF-16 file (PowerShell's Out-File) is read like any other", () => {
+  // What Claude Code's Read sends for such a file: the bytes taken as UTF-8.
+  const utf16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(j("DB_PASS", "WORD=Xk9vQ2mLp7Rt\r\n"), "utf16le")]).toString("utf8");
+  const found = scanText(`     1\t${utf16}`, "s");
+  assert.deepEqual(found.map((f) => f.kind), ["value of DB_PASSWORD"]);
+  assert.equal(found[0]!.masked, "Xk9v…(12 chars)");
+  assert.equal(found[0]!.fingerprint, scanText(j("DB_PASS", "WORD=Xk9vQ2mLp7Rt"), "s")[0]!.fingerprint, "the same secret as in UTF-8");
+});
+
 test("a key matched by its format and as KEY=value is reported once, by format", () => {
   const found = scanText(`AWS_ACCESS_KEY_ID=${AWS}\n`, "s");
   assert.deepEqual(found.map((f) => f.kind), ["AWS access key"]);
