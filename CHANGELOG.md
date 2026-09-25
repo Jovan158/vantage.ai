@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 — 2026-09-25
+
+No changes to how Vantage works.
+
+- A new README: what Vantage does for you, a screenshot of `vantage watch`, a FAQ, and how to contribute.
+- The package description is the slogan alone: "See and control what your coding agent does".
+- Files in the package use Unix line endings, also when the package is built on Windows.
+
 ## 0.1.0 — 2026-09-25
 
 First public release. Vantage runs Claude Code through a local proxy and its own
