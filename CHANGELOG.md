@@ -13,7 +13,12 @@
 - **`vantage doctor`** lists every agent it knows, whether it is installed and whether a setup is missing; `vantage doctor <agent>` checks one.
 - Secret warnings, `watch`, `replay` and `search` name the agent that ran the session.
 
-Prices are still Anthropic's list only: for GPT, Gemini and other models the tokens are counted and the cost shown as unknown.
+### Prices for GPT and Gemini models
+- The cost estimate now covers GPT and Gemini models as well as Claude, at OpenAI's and Google's official list prices, whichever agent calls them. Like Anthropic's, both lists are read from the official pages by a parser that checks every price; a copy ships with Vantage and the weekly price workflow keeps it current.
+- Prices that depend on the prompt size (OpenAI's long-context rates, Google's above 200K tokens) are applied per request, and a price change a page announces for a later day applies from that day on.
+- Model names as other agents write them find their price: `claude-sonnet-4.6` (Copilot), `anthropic/claude-opus-5` (OpenCode), dated snapshots like `gpt-5.4-mini-2026-03-17`.
+- `vantage pricing [show|update|check] [anthropic|openai|google]` works with all three lists; `vantage pricing openai` shows one.
+- Models on none of the lists (DeepSeek, Mistral, local models) are still metered, with the cost shown as unknown.
 
 ## 0.1.3 — 2026-09-25
 

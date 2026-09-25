@@ -29,17 +29,27 @@ unknown` instead of guessed — their tokens are still counted. On a
 subscription, the dollar amount is only an API equivalent; the real signal is
 the quota line.
 
-**Where the prices come from.** No number is typed by hand. The only source is
-Anthropic's official pricing page in its Markdown form (`…/pricing.md`), read by
-*one* parser (`src/pricing-source.ts`):
+**Where the prices come from.** No number is typed by hand. The only sources
+are the official pricing pages of Anthropic, OpenAI and Google in their
+Markdown form (`…/pricing.md`, Google's `…/pricing.md.txt`), each read by a
+parser of its own (`src/pricing-source.ts`):
 
 ```
-official pricing page ─► parser ─┬─► src/pricing-snapshot.ts   generated, ships with Vantage
-                                 └─► ~/.vantage/pricing.json    `vantage pricing update`
+official pricing pages ─► parsers ─┬─► src/pricing-snapshot.ts        generated, ships with Vantage
+                                   └─► ~/.vantage/pricing*.json       `vantage pricing update`
 ```
+
+Only Standard prices are read (no batch, flex or priority rates). OpenAI's
+long-context rates count where the page names the limit (`gpt-5.5 (<272K
+context length)`), Google's where a cell reads `prompts <= 200k`; a request is
+priced by its own prompt size. A price a page announces for a later day
+(`$0.75 through December 31, 2026. $1.50 starting January 1, 2027.`) is kept
+with its date and applies from that day on. OpenAI and Google list no separate
+cache-write price (writes cost input) and leave out some cached-input prices
+(full input then), so their plausibility check only requires the order loosely.
 
 - `vantage pricing` shows the prices in use, their date and their source.
-- `vantage pricing update` fetches the current list — **only when you run it**.
+- `vantage pricing update` fetches the current lists — **only when you run it**.
   Vantage never downloads anything on its own; a meter that creates traffic
   unasked would defeat its purpose.
 - When both are present, the **newer** source wins per model: a fresh update
@@ -47,8 +57,8 @@ official pricing page ─► parser ─┬─► src/pricing-snapshot.ts   gener
 - The parser is strict: columns are found by heading, not position, every price
   must read `$X / MTok`, and every row must pass a plausibility check (cache
   read < input < 5m write < 1h write, output > input — which catches swapped
-  columns). If the page format changes, it fails and writes nothing — never
-  wrong numbers in the meter.
+  columns; for OpenAI and Google only loosely, see above). If a page format
+  changes, it fails and writes nothing — never wrong numbers in the meter.
 - When a model without a price shows up, or the list is older than 60 days, the
   end of the session says so in one line.
 - A weekly CI job (`Pricing`, on Mondays) keeps the bundled list current with no
@@ -411,7 +421,7 @@ addition — no change to the core.
 | `src/terminal.ts` | Holds output back while Claude Code's chat UI is open |
 | `src/outbox.ts` | Outbox for alerts that the Stop hook shows in Claude Code's chat |
 | `src/resolve.ts` | Finds the agent's executable (including npm `.cmd` shims on Windows) |
-| `src/pricing.ts`, `src/pricing-source.ts`, `src/pricing-snapshot.ts` | Prices: lookup, parser of the official list, generated snapshot |
+| `src/pricing.ts`, `src/pricing-source.ts`, `src/pricing-snapshot.ts` | Prices: lookup, parsers of the official lists, generated snapshot |
 | `src/providers/` | Provider layer (Anthropic only for now) behind an interface |
 | `src/agents/` | Agent adapters (Claude Code only for now) |
 | `src/cli.ts` | Entry point: help and dispatch to the commands |

@@ -1,13 +1,14 @@
 name: Pricing
 
-# Keeps the bundled price list (src/pricing-snapshot.ts) in step with
-# Anthropic's official pricing page, with no one watching:
+# Keeps the bundled price lists (src/pricing-snapshot.ts) in step with the
+# official pricing pages of Anthropic, OpenAI and Google, with no one
+# watching:
 #
-# Every Monday it compares the two. When a price changed or a model was
+# Every Monday it compares them. When a price changed or a model was
 # added, it regenerates the list, runs the type check and the tests, and
 # commits the result straight to the default branch.
 #
-# It stops, changes nothing and fails (so GitHub sends a mail) when the page
+# It stops, changes nothing and fails (so GitHub sends a mail) when a page
 # no longer parses, a price moved by more than 10x, or the tests fail —
 # those need a person. See scripts/pricing-snapshot.ts.
 #
@@ -43,7 +44,7 @@ jobs:
 
       # No install needed: vantage has no runtime dependencies and runs the
       # TypeScript source directly in a checkout.
-      - name: Compare the official price list with the bundled one
+      - name: Compare the official price lists with the bundled ones
         if: github.event_name == 'push'
         run: node bin/vantage.mjs pricing check
 

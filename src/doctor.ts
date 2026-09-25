@@ -164,7 +164,7 @@ export function checkPrices(nowMs = Date.now()): Check {
   if (p.cacheError) return { level: "warn", text: "downloaded price list ignored", hint: p.cacheError };
   const days = Math.floor((nowMs - Date.parse(p.asOf)) / 86_400_000);
   if (days >= STALE_AFTER_DAYS) return { level: "warn", text: `price list is ${days} days old`, hint: "`vantage pricing update`" };
-  return { level: "ok", text: `price list from ${p.asOf.slice(0, 10)} (${Object.keys(p.models).length} models)` };
+  return { level: "ok", text: `price lists from ${p.asOf.slice(0, 10)} (${Object.keys(p.models).length} models from Anthropic, OpenAI and Google)` };
 }
 
 export function checkSessions(opts: DoctorOptions): Check {

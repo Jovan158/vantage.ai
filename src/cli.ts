@@ -43,7 +43,7 @@ function printHelp(withLogo = true): void {
       `  vantage discard <sessionId>\n` +
       `  vantage memory <init|show|add <category> <text>>\n` +
       `  vantage policy [init]\n` +
-      `  vantage pricing [update|check]\n` +
+      `  vantage pricing [show|update|check] [anthropic|openai|google]\n` +
       `  vantage setup <agent>\n` +
       `  vantage doctor [agent]\n` +
       `  vantage demo\n` +
@@ -60,9 +60,9 @@ function printHelp(withLogo = true): void {
       `settings: \`vantage setup <agent>\` adds Vantage's there once.\n\n` +
       `VANTAGE_AGENT_PATH=<path> starts the agent from that executable instead of\n` +
       `looking it up on PATH.\n\n` +
-      `Prices come from Anthropic's official list: a copy ships with vantage, and\n` +
-      `\`vantage pricing update\` fetches the current one. Nothing is fetched\n` +
-      `unless you run that command.\n`
+      `Prices come from Anthropic's, OpenAI's and Google's official lists: a copy\n` +
+      `ships with vantage, and \`vantage pricing update\` fetches the current ones.\n` +
+      `Nothing is fetched unless you run that command.\n`
   );
 }
 

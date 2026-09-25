@@ -27,7 +27,7 @@ Vantage is a free, open-source cost and usage monitor, guardrail and session log
 
 ## Features
 
-- **Cost and limits, live.** Tokens, estimated cost at Anthropic's official list prices, and the 5-hour and weekly quota of a Claude or ChatGPT subscription with a forecast.
+- **Cost and limits, live.** Tokens, estimated cost at the official list prices of Anthropic, OpenAI and Google, and the 5-hour and weekly quota of a Claude or ChatGPT subscription with a forecast.
 - **Budgets.** Past a cost or quota limit you set, every action needs your approval.
 - **Approvals by action type, file and command.** Allow, warn, ask or deny file reads, writes, shell commands and network access, or specific files and commands.
 - **Alerts in the chat.** Secret warnings, low quota and budgets appear in the agent's chat, right after the reply.
@@ -58,23 +58,37 @@ vantage watch           # live view, in a second terminal
 | Agent | Start with | Tokens and cost | Usage limits | Rules that ask | Alerts in its chat | One-time setup |
 | --- | --- | --- | --- | --- | --- | --- |
 | Claude Code | `vantage run claude` | yes | 5-hour and weekly | ask | yes | – |
-| Codex | `vantage run codex` | tokens | 5-hour and weekly (ChatGPT plan) | block instead | yes | – |
-| Copilot CLI | `vantage run copilot` | tokens | – | ask | yes | – |
-| Gemini CLI | `vantage run gemini` | tokens | – | ask | yes | `vantage setup gemini` |
+| Codex | `vantage run codex` | yes | 5-hour and weekly (ChatGPT plan) | block instead | yes | – |
+| Copilot CLI | `vantage run copilot` | yes | – | ask | yes | – |
+| Gemini CLI | `vantage run gemini` | yes | – | ask | yes | `vantage setup gemini` |
 | OpenCode | `vantage run opencode` | yes | – | block instead | as a toast | – |
 | pi | `vantage run pi` | yes | – | ask | as a notification | – |
 | Hermes Agent | `vantage run hermes` | yes | – | ask (newest Hermes) | – | `vantage setup hermes` |
 | Cursor CLI | `vantage run cursor` | – | – | ask | – | `vantage setup cursor` |
 | Antigravity CLI | `vantage run antigravity` | with a Gemini API key | – | ask | – | `vantage setup antigravity` |
 
-- **Tokens and cost:** "yes" means the cost is shown for Claude models, whichever agent calls them; for other models Vantage counts the tokens and says the price is unknown (see [Prices](#prices)). Cursor talks to its own servers in a protocol of its own, so its usage cannot be read.
+- **Tokens and cost:** the cost is shown for Claude, GPT and Gemini models, whichever agent calls them; for other models (DeepSeek or Mistral through OpenCode, say) Vantage counts the tokens and says the price is unknown (see [Prices](#prices)). Cursor talks to its own servers in a protocol of its own, so its usage cannot be read.
 - **Rules that ask:** Codex and OpenCode can block a tool call from a hook but not pause to ask. There a rule set to `ask` blocks the action, and the agent is told to leave it to you. `deny` works everywhere.
 - **One-time setup:** Gemini CLI, Hermes, Cursor and Antigravity take hooks only from their own settings. `vantage setup <agent>` adds Vantage's hook there once, next to your own hooks; outside a Vantage session it does nothing. `vantage doctor` shows whether it is in place.
 - **Tested** against the real CLIs of Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode, pi and Hermes ([`scripts/e2e-agents.ts`](scripts/e2e-agents.ts)). Cursor and Antigravity follow their documented hook format and have not been run against the real CLIs yet — reports are welcome.
 
-The guide below explains each part: [Supported agents](#supported-agents) · [Start a session](#start-a-session) · [Watch it live](#watch-it-live) · [Alerts in the chat](#alerts-in-the-chat) · [Approval rules](#approval-rules) · [Budgets](#budgets) · [Secret warnings](#secret-warnings) · [Look back](#look-back) · [Review what changed](#review-what-changed) · [Project memory](#project-memory) · [Prices](#prices) · [Troubleshooting](#troubleshooting) · [Reference](#reference)
-
 ## Guide
+
+How to use each part, step by step:
+
+1. [Start a session](#start-a-session) — `vantage run`, passing options to the agent, the summary at the end
+2. [Watch it live](#watch-it-live) — the live view, line by line
+3. [Alerts in the chat](#alerts-in-the-chat) — what Vantage tells you while the agent works
+4. [Approval rules](#approval-rules) — allow, warn, ask or deny by action type, file and command
+5. [Budgets](#budgets) — ask before every action past a cost or quota limit
+6. [Secret warnings](#secret-warnings) — what counts as a secret, and what to do
+7. [Look back](#look-back) — sessions, replay, stats and search
+8. [Review what changed](#review-what-changed) — the change summary, the full diff, isolated sessions
+9. [Project memory](#project-memory) — decisions and conventions the agent gets at every start
+10. [Prices](#prices) — where the cost estimate comes from
+11. [Troubleshooting](#troubleshooting)
+
+Also: [Reference](#reference) (commands, options, environment variables, how it works) · [FAQ](#faq)
 
 ### Start a session
 
@@ -220,7 +234,14 @@ Edit the files directly, too; commit them to share them with your team. After a 
 
 ### Prices
 
-The cost is an estimate: the tokens of each request at Anthropic's official list price, including cache reads and writes. Only Claude models have a price so far, whichever agent calls them; for GPT, Gemini and other models Vantage counts the tokens — cached input apart, as with Claude — and shows the cost as unknown rather than guessing. On a Pro, Max or ChatGPT subscription you do not pay per token — there, the quota bars are what counts. A copy of the price list ships with Vantage; `vantage pricing` shows the prices in use and their date, and `vantage pricing update` fetches the current official list. Vantage never fetches anything unless you run that command.
+The cost is an estimate: the tokens of each request at the model maker's official list price, including cache reads and writes.
+
+- **Claude models** at [Anthropic's price list](https://platform.claude.com/docs/en/about-claude/pricing), **GPT models** at [OpenAI's](https://developers.openai.com/api/docs/pricing), **Gemini models** at [Google's](https://ai.google.dev/gemini-api/docs/pricing) — whichever agent calls them. Copilot's `claude-sonnet-4.6` and OpenCode's `anthropic/claude-sonnet-4-6` are the same model at the same price.
+- **Standard prices**: batch, flex and priority rates are not used. Where a price depends on the prompt size (OpenAI's long-context rates above 272K tokens, Google's above 200K), the request is priced by its own size. A price change the page announces for a later day applies from that day on.
+- **Other models** (DeepSeek, Mistral, local models, …): Vantage counts the tokens and shows the cost as unknown rather than guessing.
+- **On a subscription** (Claude Pro or Max, ChatGPT, Copilot, Gemini Code Assist) you do not pay per token: the cost is what the same use would cost on the API, and the quota bars are what counts.
+
+A copy of the three price lists ships with Vantage and is updated with each release. `vantage pricing` shows the prices in use and their date (`vantage pricing openai` one list), and `vantage pricing update` fetches the current official lists. Vantage never fetches anything unless you run that command.
 
 ### Troubleshooting
 
@@ -250,7 +271,7 @@ The cost is an estimate: the tokens of each request at Anthropic's official list
 | `vantage memory init` · `add <category> <text>` · `show` | Manage project memory |
 | `vantage harvest [id]` | Suggest what to remember from a session |
 | `vantage policy` · `vantage policy init` | Show the rules in effect · create a starter rule file |
-| `vantage pricing` · `vantage pricing update` | Show prices · fetch the current official list |
+| `vantage pricing [provider]` · `vantage pricing update [provider]` | Show prices · fetch the current official lists (`anthropic`, `openai`, `google`) |
 | `vantage doctor [agent]` | Check the setup: agents, hook, git, rules, prices |
 
 Options for `run`:
