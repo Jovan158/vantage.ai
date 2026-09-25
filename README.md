@@ -42,7 +42,7 @@ Vantage is a free, open-source cost and usage monitor, guardrail and session log
 npm install -g @jovan158/vantage
 ```
 
-Needs Node.js 22.6 or newer and Claude Code, installed and logged in with a subscription or an API key — Vantage uses that login and needs no key of its own. git is optional (change summaries, `--isolate`). Tested on Windows and Linux.
+Needs Node.js 22.6 or newer and Claude Code, installed and logged in with a subscription or an API key — Vantage uses that login and needs no key of its own.
 
 ## Quick start
 
