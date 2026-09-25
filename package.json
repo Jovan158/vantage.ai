@@ -1,5 +1,5 @@
 {
-  "name": "vantagedev",
+  "name": "vantage-ai-cli",
   "version": "0.0.1",
   "description": "Control & transparency layer for Claude Code: live cost and quota, action approvals, session replay, isolation, project memory",
   "type": "module",

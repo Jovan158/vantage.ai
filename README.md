@@ -42,7 +42,7 @@ git clone https://github.com/Jovan158/vantage.ai.git
 cd vantage.ai
 npm install
 npm pack
-npm install -g ./vantagedev-0.0.1.tgz
+npm install -g ./vantage-ai-cli-0.0.1.tgz
 ```
 
 ## Quick start
