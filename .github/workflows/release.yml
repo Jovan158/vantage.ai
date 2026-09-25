@@ -1,0 +1,71 @@
+name: Release
+
+# Publishes the package to npm when a release is published on GitHub.
+# The steps for a release are in RELEASING.md.
+#
+# Before publishing it checks, and stops without publishing when one fails:
+#   - the release tag (v0.1.1) matches the version in package.json
+#   - the bundled price list matches Anthropic's official one, so every
+#     release ships current prices (update it with the Pricing workflow)
+#   - type check and tests pass
+#
+# Authentication: npm trusted publishing (no secret needed once it is set up
+# for this repository on npmjs.com), or an npm access token in the repository
+# secret NPM_TOKEN.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  # Trusted publishing and the provenance statement on npm.
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          registry-url: "https://registry.npmjs.org"
+
+      # Trusted publishing needs npm 11.5 or newer; Node 22 ships npm 10.
+      - name: Use a current npm
+        run: npm install -g npm@11
+
+      - name: The release tag matches the package version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(node -p "require('./package.json').version")
+          if [ "$tag" != "$version" ]; then
+            echo "::error::The release tag is $GITHUB_REF_NAME, but package.json says $version. Tag the release v$version, or change the version first."
+            exit 1
+          fi
+
+      - name: The bundled price list is current
+        run: |
+          if ! node bin/vantage.mjs pricing check; then
+            echo "::error::The bundled price list is out of date. Run the Pricing workflow (Actions > Pricing > Run workflow), which commits the new prices to main; then delete this release and its tag and create it again, so it points to that commit."
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - name: Type check and tests
+        run: |
+          npm run typecheck
+          npm test
+
+      # prepack builds dist/ first.
+      - name: Publish to npm
+        run: npm publish --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
