@@ -19,7 +19,7 @@ function mkRepo(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vantage-git-"));
   const g = (args: string[]) => execFileSync("git", args, { cwd: dir });
   g(["init", "-q", "-b", "main"]);
-  g(["config", "user.email", "test@vantage.dev"]);
+  g(["config", "user.email", "test@vantage.ai"]);
   g(["config", "user.name", "Vantage Test"]);
   fs.writeFileSync(path.join(dir, "app.js"), "console.log('v1');\n");
   g(["add", "-A"]);
