@@ -93,7 +93,7 @@ Example of `vantage watch`:
 
 ## Configuration
 
-Approval rules live in `.vantage/policy.json`; `vantage policy init` creates one with recommended rules.
+Approval rules live in each project's `.vantage/policy.json`. You write your own, or start from `vantage policy init`, which asks before `.env` files, `git push --force`, `git reset --hard`, `git clean`, `rm -rf` and `npm publish`, and blocks private keys (`*.pem`, `*.key`, SSH keys). Commit the file and your whole team works with the same rules; `vantage policy` shows the rules in effect.
 
 ```json
 {
@@ -118,7 +118,7 @@ A file pattern without `/` matches the name anywhere, with `/` the path from the
 
 | Variable | Description |
 | --- | --- |
-| `VANTAGE_POLICY` | Override rules, e.g. `shell:deny,network:ask` |
+| `VANTAGE_POLICY` | Override the action-type levels for one session, e.g. `shell:deny,network:ask` |
 | `VANTAGE_MAX_COST`, `VANTAGE_MAX_QUOTA` | Budget, same as the `run` options |
 | `VANTAGE_QUOTA_WARN` | Quota warning threshold in percent (default 90) |
 | `VANTAGE_AGENT_PATH` | Path to Claude Code if it is not found on `PATH` |
