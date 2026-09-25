@@ -48,12 +48,12 @@ export const copilot: AgentAdapter = {
       copilotPlugin(dir, ctx.hook, { tool: ctx.enforce, stop: ctx.chatAlerts });
       args.push("--plugin-dir", dir);
     }
-    // Instructions from extra directories are read like AGENTS.md.
+    // Extra instruction directories are searched for *.instructions.md.
     let memory = false;
     if (ctx.memory) {
       const dir = path.join(ctx.sessionDir, "copilot-instructions");
       fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, "AGENTS.md"), ctx.memory);
+      fs.writeFileSync(path.join(dir, "vantage-memory.instructions.md"), ctx.memory);
       const existing = ctx.env.COPILOT_CUSTOM_INSTRUCTIONS_DIRS;
       env.COPILOT_CUSTOM_INSTRUCTIONS_DIRS = existing ? `${existing}${path.delimiter}${dir}` : dir;
       memory = true;

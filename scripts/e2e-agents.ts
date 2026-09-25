@@ -9,7 +9,7 @@
 // Each agent runs with a home directory of its own, so nothing of yours is
 // read or changed. Agents that are not installed are skipped.
 
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -100,10 +100,20 @@ async function runCase(c: Case): Promise<string> {
   const mock = await startMockLlm({ command: "echo vantage-probe" });
   try {
     const env = { ...process.env, HOME: home, USERPROFILE: home, VANTAGE_HOME: path.join(home, ".vantage"), ...c.env(mock.url, home) };
-    const cli = (args: string[]): ReturnType<typeof spawnSync> =>
-      spawnSync(process.execPath, ["--experimental-strip-types", ENTRY, ...args], { cwd: project, env, encoding: "utf8", timeout: 240_000, input: "" });
-    if (c.setup) cli(["setup", c.agent]);
-    const r = cli(["run", c.agent, "--", ...c.args]);
+    // Asynchronous: the mock answers from this very process.
+    const cli = (args: string[]): Promise<{ status: number | null; stderr: string }> =>
+      new Promise((resolve) => {
+        const child = spawn(process.execPath, ["--experimental-strip-types", ENTRY, ...args], { cwd: project, env, stdio: ["ignore", "ignore", "pipe"] });
+        let stderr = "";
+        child.stderr.on("data", (d) => (stderr += d));
+        const timer = setTimeout(() => child.kill(), 240_000);
+        child.on("close", (status) => {
+          clearTimeout(timer);
+          resolve({ status, stderr });
+        });
+      });
+    if (c.setup) await cli(["setup", c.agent]);
+    const r = await cli(["run", c.agent, "--", ...c.args]);
     const sessions = path.join(project, ".vantage", "sessions");
     const dir = fs.existsSync(sessions) ? fs.readdirSync(sessions)[0] : undefined;
     const events: Event[] = dir
