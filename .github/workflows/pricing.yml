@@ -1,24 +1,38 @@
-name: Pricing drift
+name: Pricing
 
-# The bundled price list (src/pricing-snapshot.ts) is generated from
-# Anthropic's official pricing page. This checks weekly that it still matches,
-# so a price change or a new model is noticed without anyone watching the
-# page. On failure: `npm run pricing:snapshot`, review the diff, commit.
-# The same check fails loudly if the page format changes and no longer parses.
+# Keeps the bundled price list (src/pricing-snapshot.ts) in step with
+# Anthropic's official pricing page, with no one watching:
+#
+# Every Monday it compares the two. When a price changed or a model was
+# added, it regenerates the list, runs the type check and the tests, and
+# commits the result straight to the default branch.
+#
+# It stops, changes nothing and fails (so GitHub sends a mail) when the page
+# no longer parses, a price moved by more than 10x, or the tests fail —
+# those need a person. See scripts/pricing-snapshot.ts.
+#
+# On pushes that touch the parser or the list it only checks.
 
 on:
-  # Also whenever the parser, the bundled list or this check changes.
   push:
     paths:
       - src/pricing-source.ts
       - src/pricing-snapshot.ts
+      - scripts/pricing-snapshot.ts
       - .github/workflows/pricing.yml
   schedule:
     - cron: "23 6 * * 1"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+concurrency:
+  group: pricing
+  cancel-in-progress: false
+
 jobs:
-  check:
+  pricing:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,4 +44,34 @@ jobs:
       # No install needed: vantage has no runtime dependencies and runs the
       # TypeScript source directly in a checkout.
       - name: Compare the official price list with the bundled one
+        if: github.event_name == 'push'
         run: node bin/vantage.mjs pricing check
+
+      - name: Regenerate the bundled list if prices changed
+        id: regen
+        if: github.event_name != 'push'
+        run: |
+          # Without pipefail, tee would hide a refusal (exit 1).
+          set -o pipefail
+          node --experimental-strip-types scripts/pricing-snapshot.ts --auto | tee "$RUNNER_TEMP/pricing.txt"
+          if git diff --quiet -- src/pricing-snapshot.ts; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Type check and tests with the new prices
+        if: steps.regen.outputs.changed == 'true'
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - name: Commit the new price list
+        if: steps.regen.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pricing-snapshot.ts
+          git commit -m "Update the bundled price list" -m "$(grep -v '^wrote ' "$RUNNER_TEMP/pricing.txt")"
+          git push

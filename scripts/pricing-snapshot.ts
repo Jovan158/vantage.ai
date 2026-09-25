@@ -1,15 +1,18 @@
 // Regenerates src/pricing-snapshot.ts from the official price list.
 //
-//   npm run pricing:snapshot
+//   npm run pricing:snapshot                 always rewrite, show the diff
+//   npm run pricing:snapshot -- --auto       what the weekly workflow runs:
+//       write only when a price changed or a model was added, and refuse
+//       (exit 1, nothing written) when a price moved implausibly far
 //
-// Run it when the weekly "Pricing drift" workflow fails, review the diff it
-// prints, and commit the regenerated file. It uses the same parser and checks
-// as `vantage pricing update`, so the bundled prices are never typed by hand.
+// It uses the same parser and checks as `vantage pricing update`, so the
+// bundled prices are never typed by hand. Models the page no longer lists
+// stay in the list, so old sessions keep their prices.
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { fetchPriceTable, diffPrices, formatChange } from "../src/pricing-source.ts";
+import { fetchPriceTable, diffPrices, formatChange, hasDrift, implausibleChanges, nextSnapshot } from "../src/pricing-source.ts";
 import { SNAPSHOT } from "../src/pricing-snapshot.ts";
 import type { PriceTable } from "../src/pricing.ts";
 
@@ -31,14 +34,27 @@ function renderSnapshot(t: PriceTable): string {
   );
 }
 
+const auto = process.argv.includes("--auto");
 const fetched = await fetchPriceTable();
 for (const s of fetched.skipped) process.stderr.write(`skipped ${s}\n`);
 
 const d = diffPrices(SNAPSHOT.models, fetched.models);
 for (const id of d.added) process.stdout.write(`+ ${id}\n`);
 for (const c of d.changed) process.stdout.write(`~ ${formatChange(c)}\n`);
-for (const id of d.unlisted) process.stdout.write(`- ${id} (no longer listed)\n`);
+for (const id of d.unlisted) process.stdout.write(`- ${id} (no longer listed, kept)\n`);
+
+if (auto && !hasDrift(d)) {
+  process.stdout.write("no price changes\n");
+  process.exit(0);
+}
+const suspicious = auto ? implausibleChanges(d) : [];
+if (suspicious.length) {
+  process.stderr.write(`refusing to update: these prices moved more than 10x, which needs a person to confirm:\n`);
+  for (const line of suspicious) process.stderr.write(`  ${line}\n`);
+  process.exit(1);
+}
 
 const { skipped: _skipped, ...table } = fetched;
-fs.writeFileSync(target, renderSnapshot(table));
-process.stdout.write(`wrote ${path.relative(process.cwd(), target)} · ${Object.keys(table.models).length} models\n`);
+const next = nextSnapshot(SNAPSHOT, table);
+fs.writeFileSync(target, renderSnapshot(next));
+process.stdout.write(`wrote ${path.relative(process.cwd(), target)} · ${Object.keys(next.models).length} models\n`);

@@ -18,6 +18,8 @@ import {
   fetchText,
   diffPrices,
   hasDrift,
+  implausibleChanges,
+  nextSnapshot,
 } from "../src/pricing-source.ts";
 import { mergeTables, loadActivePrices, validateTable, pricingHints, type PriceTable } from "../src/pricing.ts";
 import { SNAPSHOT } from "../src/pricing-snapshot.ts";
@@ -214,4 +216,22 @@ test("`vantage pricing update` saves the official list; a broken page changes no
 
   await s.close();
   fs.rmSync(home, { recursive: true, force: true });
+});
+
+test("automatic updates: a price that moved more than 10x is held for a person", () => {
+  const before = { a: entry(1), b: entry(2) };
+  assert.deepEqual(implausibleChanges(diffPrices(before, { a: entry(3), b: entry(0.5) })), [], "3x up, 4x down: plausible");
+  const wild = implausibleChanges(diffPrices(before, { a: entry(15), b: entry(2) }));
+  assert.equal(wild.length, 5, "every field of a");
+  assert.match(wild[0]!, /^a: input \$1 → \$15$/);
+  assert.equal(implausibleChanges(diffPrices(before, { a: { ...entry(1), output: 0.4 }, b: entry(2) })).length, 1, "a 12.5x drop");
+});
+
+test("automatic updates keep models the page no longer lists", () => {
+  const current = table("2026-09-01T00:00:00Z", { old: entry(1), a: entry(2) });
+  const fetched = table("2026-09-20T00:00:00Z", { a: entry(3), fresh: entry(4) });
+  const next = nextSnapshot(current, fetched);
+  assert.equal(next.fetchedAt, "2026-09-20T00:00:00Z");
+  assert.deepEqual(Object.keys(next.models).sort(), ["a", "fresh", "old"]);
+  assert.equal(next.models.a!.input, 3, "the fetched price wins");
 });

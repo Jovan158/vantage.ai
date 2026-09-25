@@ -228,6 +228,27 @@ export function hasDrift(d: PriceDiff): boolean {
   return d.added.length > 0 || d.changed.length > 0;
 }
 
+// Price changes too large to take over without a person looking: a price
+// that moved by more than `maxFactor` either way is far more likely a
+// misread page than a real price change.
+// Returns one line per suspicious price, empty when all is plausible.
+export function implausibleChanges(d: PriceDiff, maxFactor = 10): string[] {
+  const out: string[] = [];
+  for (const c of d.changed) {
+    for (const f of FIELDS) {
+      const ratio = c.after[f] / c.before[f];
+      if (ratio > maxFactor || ratio < 1 / maxFactor) out.push(`${c.id}: ${f} $${c.before[f]} → $${c.after[f]}`);
+    }
+  }
+  return out;
+}
+
+// The bundled list after an update: the fetched prices, plus every model
+// the page no longer lists — a retired model still prices old sessions.
+export function nextSnapshot(current: PriceTable, fetched: PriceTable): PriceTable {
+  return { ...fetched, models: { ...current.models, ...fetched.models } };
+}
+
 export function formatChange(c: PriceChange): string {
   const parts = FIELDS.filter((f) => c.before[f] !== c.after[f]).map((f) => `${f} $${c.before[f]} → $${c.after[f]}`);
   return `${c.id}: ${parts.join(", ")}`;
