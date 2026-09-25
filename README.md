@@ -152,7 +152,7 @@ Each session is recorded in the project's `.vantage/sessions/`, including excerp
 
 ## Contributing
 
-Issues and pull requests are welcome. To work on Vantage, clone the repository, run `npm install` and `npm test`; Node.js runs the TypeScript source directly, without a build step. Please report security issues privately through the repository's *Security* tab rather than in a public issue.
+Issues and pull requests are welcome. To work on Vantage, clone the repository, run `npm install` and `npm test`; Node.js runs the TypeScript source directly, without a build step. Please report security issues privately through the repository's *Security* tab rather than in a public issue. Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
