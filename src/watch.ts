@@ -14,6 +14,7 @@ import { summarizeActions, formatActionSummary } from "./policy.ts";
 import { summarize, relativeTarget, shortenPaths } from "./replay.ts";
 import { formatCost } from "./pricing.ts";
 import { readLastSession, type SessionRef } from "./home.ts";
+import { plain } from "./sanitize.ts";
 
 const C = {
   dim: "\x1b[2m",
@@ -182,7 +183,7 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
   const projectPath = opts.project ?? (start?.type === "session_start" ? start.project : undefined);
   // Folder name only (the log may come from Windows or POSIX); the full path
   // when watching a session from another directory.
-  const projectName = projectPath ? opts.project ?? projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? projectPath : null;
+  const projectName = projectPath ? plain(opts.project ?? projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? projectPath) : null;
   const state =
     end && end.type === "session_end"
       ? `${c.gray}ended${end.exitCode != null ? ` (exit ${end.exitCode})` : ""}${c.reset}`
@@ -368,7 +369,7 @@ export function renderOverview(items: OverviewItem[], opts: { nowMs?: number; co
   const name = (item: OverviewItem): string => {
     const start = item.events.find((e) => e.type === "session_start");
     const project = (start?.type === "session_start" && start.project) || item.ref.cwd;
-    return project.split(/[\\/]/).filter(Boolean).at(-1) ?? project;
+    return plain(project.split(/[\\/]/).filter(Boolean).at(-1) ?? project);
   };
   const nameWidth = Math.min(20, Math.max(...items.map((i) => name(i).length)));
   const sorted = [...items].sort((a, z) => a.ref.sessionId.localeCompare(z.ref.sessionId));

@@ -10,6 +10,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { plain } from "./sanitize.ts";
 
 export function outboxPath(dir: string): string {
   return path.join(dir, "outbox.jsonl");
@@ -22,7 +23,7 @@ export interface Alert {
 
 export function postAlert(file: string, alert: Alert): void {
   try {
-    fs.appendFileSync(file, JSON.stringify({ level: alert.level, message: alert.message }) + "\n");
+    fs.appendFileSync(file, JSON.stringify({ level: alert.level, message: plain(alert.message) }) + "\n");
   } catch {
     /* the alert is still in the event log and in `vantage watch` */
   }

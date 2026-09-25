@@ -12,6 +12,7 @@ import { formatCost } from "../pricing.ts";
 import { gitSafe } from "../git.ts";
 import { readMeta } from "../session-meta.ts";
 import { log } from "./output.ts";
+import { plain } from "../sanitize.ts";
 
 export async function cmdSessions(argv: string[]): Promise<number> {
   if (argv[0] === "prune") return cmdPrune(argv.slice(1));
@@ -80,7 +81,7 @@ async function cmdPrune(argv: string[]): Promise<number> {
   log(`${plan.remove.length} session(s) ${where} inactive for ${ageRaw} (${formatBytes(total)}):`);
   for (const item of plan.remove) {
     const last = new Date(item.lastActivityMs).toISOString().slice(0, 10);
-    const project = everywhere ? `  ${item.ref.cwd}` : "";
+    const project = everywhere ? `  ${plain(item.ref.cwd)}` : "";
     process.stdout.write(`  ${item.ref.sessionId}  last active ${last}  ${formatBytes(item.bytes).padStart(8)}${project}\n`);
   }
   if (!yes) {

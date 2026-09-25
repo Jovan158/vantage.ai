@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3 — 2026-09-25
+
+### Security
+- Text from outside — file names, commands, prompts, replies, tool output — could carry terminal control sequences, and `vantage watch`, `replay`, `search`, `stats` and the session summary printed them as they were. A file with such a sequence in its name could change the terminal window's title, clear the screen, hide or fake lines, and in terminals that allow it write to the clipboard. Vantage now removes control sequences from everything it prints that it did not write itself, as Claude Code does in its own UI.
+
 ## 0.1.2 — 2026-09-25
 
 No changes to how Vantage works. 0.1.1 was published from a checkout that did not have its changes yet; 0.1.2 carries them:

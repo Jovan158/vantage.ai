@@ -12,6 +12,7 @@
 import type { VantageEvent } from "./events.ts";
 import type { SessionRef } from "./home.ts";
 import { shortenPaths } from "./replay.ts";
+import { plain } from "./sanitize.ts";
 
 export type HitKind = "message" | "reply" | "file" | "command" | "call" | "changed" | "blocked" | "asked" | "secret";
 
@@ -144,7 +145,7 @@ export function renderSearch(results: SessionHits[], opts: SearchOptions): strin
   lines.push(`${c.bold}${total} match(es) in ${sorted.length} session(s)${c.reset} ${c.dim}for "${opts.query}", newest first${c.reset}`);
   const limit = opts.limit ?? 10;
   for (const r of sorted.slice(0, limit)) {
-    const name = r.project.split(/[\\/]/).filter(Boolean).at(-1) ?? r.project;
+    const name = plain(r.project.split(/[\\/]/).filter(Boolean).at(-1) ?? r.project);
     lines.push("");
     lines.push(`${c.bold}${when(r.startedMs)}${c.reset}  ${name}  ${c.dim}vantage replay ${r.ref.sessionId}${c.reset}`);
     const shown = r.hits.slice(0, 8);
