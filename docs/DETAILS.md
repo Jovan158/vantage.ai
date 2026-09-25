@@ -50,9 +50,16 @@ offizielle Preisseite ─► Parser ─┬─► src/pricing-snapshot.ts   gener
   geschrieben — nie falsche Zahlen im Meter.
 - Taucht ein Modell ohne Preis auf oder ist die Liste älter als 60 Tage, sagt
   das Session-Ende es mit einer Zeile.
-- Ein wöchentlicher CI-Job (`Pricing drift`) vergleicht die ausgelieferte
-  Liste mit der offiziellen und schlägt bei Abweichung fehl; behoben wird mit
-  `npm run pricing:snapshot` und Commit.
+- Ein wöchentlicher CI-Job (`Pricing`, montags) hält die ausgelieferte Liste
+  ohne Zutun aktuell: Hat sich ein Preis geändert oder ist ein Modell dazu-
+  gekommen, erzeugt er die Liste neu, lässt Typprüfung und Tests laufen und
+  committet direkt auf den Standard-Branch. Modelle, die nicht mehr auf der
+  Seite stehen, bleiben drin, damit alte Sessions ihre Preise behalten. Er
+  ändert nichts und schlägt fehl (GitHub schickt eine Mail), wenn die Seite
+  sich nicht mehr lesen lässt, ein Preis sich um mehr als das Zehnfache
+  verschiebt oder die Tests scheitern — das soll ein Mensch ansehen. Die
+  Tests rechnen dafür mit einer festen Test-Preisliste
+  (`test/price-fixture.ts`), nicht mit den echten Preisen.
 
 Bei Annäherung ans Limit warnt Vantage auffällig — **einmalig** beim Überschreiten
 der Schwelle (kein Spam), re-armiert nach Reset, und meldet akute Fälle
