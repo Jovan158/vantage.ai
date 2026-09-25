@@ -1,7 +1,7 @@
 {
   "name": "@jovan158/vantage",
   "version": "0.1.0",
-  "description": "See and control what your coding agent does: live cost and quota, approvals, secret warnings, session replay, change summaries, project memory. Currently for Claude Code.",
+  "description": "See and control what your coding agent does",
   "homepage": "https://github.com/Jovan158/vantage.ai#readme",
   "repository": {
     "type": "git",
