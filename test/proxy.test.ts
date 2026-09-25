@@ -12,10 +12,12 @@ import http from "node:http";
 import { startMockAnthropic, EXPECTED_USAGE } from "../src/dev/mock-anthropic.ts";
 import { startProxy } from "../src/proxy.ts";
 import type { UsageEvent } from "../src/events.ts";
+import { usePriceFixture } from "./price-fixture.ts";
 
-// Price against the bundled list only, never this machine's
-// `vantage pricing update` file.
+// Fixed test prices (test/price-fixture.ts), never this machine's
+// `vantage pricing update` file or today's official list.
 process.env.VANTAGE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "vantage-home-"));
+usePriceFixture(process.env.VANTAGE_HOME);
 
 function postThroughProxy(
   proxyUrl: string
@@ -64,8 +66,8 @@ test("proxy streams transparently and extracts usage", async () => {
   assert.equal(u.cache_read, EXPECTED_USAGE.cache_read_input_tokens);
   assert.equal(u.model, EXPECTED_USAGE.model);
 
-  // 3. cost estimate at Claude Sonnet 5 list prices ($2 in, $10 out, $0.20
-  //    cache read per MTok): (1024*2 + 87*10 + 512*0.2) / 1e6
+  // 3. cost estimate at the fixture's Claude Sonnet 5 prices ($2 in, $10
+  //    out, $0.20 cache read per MTok): (1024*2 + 87*10 + 512*0.2) / 1e6
   const expectedCost = (1024 * 2 + 87 * 10 + 512 * 0.2) / 1e6;
   assert.ok(u.cost_usd !== null && Math.abs(u.cost_usd - expectedCost) < 1e-6, `cost ~$${expectedCost}`);
 

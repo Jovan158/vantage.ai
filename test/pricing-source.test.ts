@@ -103,7 +103,7 @@ test("a changed page format is an error, never a partial table", () => {
 test("the bundled snapshot passes the same checks as a fetched table", () => {
   assert.doesNotThrow(() => validateTable(SNAPSHOT));
   assert.ok(Object.keys(SNAPSHOT.models).length >= 10);
-  assert.equal(SNAPSHOT.models["claude-opus-5-5"]!.input, 4);
+  assert.ok(SNAPSHOT.models["claude-opus-5-5"], "current models are listed");
 });
 
 const table = (fetchedAt: string, models: PriceTable["models"]): PriceTable => ({ source: "test", fetchedAt, models });
@@ -130,7 +130,7 @@ test("an invalid price file is ignored with a reason; the bundled list is used",
   const p = loadActivePrices(SNAPSHOT, file);
   assert.equal(p.cached, null);
   assert.match(p.cacheError ?? "", /m: /);
-  assert.equal(p.models["claude-opus-5-5"]!.input, 4);
+  assert.deepEqual(p.models, SNAPSHOT.models, "the bundled list, unchanged");
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

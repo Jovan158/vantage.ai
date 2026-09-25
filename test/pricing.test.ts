@@ -8,10 +8,12 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { estimateCostUsd, priceFor, normalizeModelId, formatCost } from "../src/pricing.ts";
 import type { TokenUsage } from "../src/usage.ts";
+import { usePriceFixture } from "./price-fixture.ts";
 
-// Price against the bundled list only, never this machine's
-// `vantage pricing update` file.
+// Fixed test prices (test/price-fixture.ts), never this machine's
+// `vantage pricing update` file or today's official list.
 process.env.VANTAGE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "vantage-home-"));
+usePriceFixture(process.env.VANTAGE_HOME);
 
 const usage = (model: string | null, over: Partial<TokenUsage> = {}): TokenUsage => ({
   model,

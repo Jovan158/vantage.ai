@@ -15,6 +15,7 @@ import { decide } from "../src/hook.ts";
 import { DEFAULT_POLICY } from "../src/policy.ts";
 import type { RateLimitSnapshot } from "../src/ratelimit.ts";
 import { startMockAnthropic } from "../src/dev/mock-anthropic.ts";
+import { usePriceFixture } from "./price-fixture.ts";
 
 const tmp = (prefix: string) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
@@ -168,8 +169,9 @@ test("`vantage run --max-cost`: the request that crosses the budget makes the ne
   const mock = await startMockAnthropic();
   const dir = tmp("vantage-budget-run-");
   const env = { VANTAGE_UPSTREAM: mock.url, VANTAGE_AGENT_PATH: fakeClaude(dir), VANTAGE_HOME: dir };
+  usePriceFixture(dir);
 
-  // The mock request costs ~$0.003 at Sonnet 5 prices.
+  // The mock request costs ~$0.003 at the fixture's Sonnet 5 prices.
   const over = await vantageRun(dir, ["--max-cost", "0.001"], env);
   assert.equal(over.code, 0, over.err);
   assert.match(over.err, /budget reached — session cost ~\$0\.0030 reached the \$0\.0010 budget/);
@@ -251,7 +253,8 @@ const fs = require("node:fs");
     fs.chmodSync(agent, 0o755);
   }
   try {
-    // Sonnet 5: 5000 in + 500 out ≈ $0.015, over a $0.01 budget.
+    // Fixture Sonnet 5 prices: 5000 in + 500 out ≈ $0.015, over a $0.01 budget.
+    usePriceFixture(dir);
     const r = await vantageRun(dir, ["--max-cost", "0.01"], { VANTAGE_UPSTREAM: `http://127.0.0.1:${port}`, VANTAGE_AGENT_PATH: agent, VANTAGE_HOME: dir });
     assert.equal(r.code, 0, r.err);
     const hook = /HOOK:(.*)/.exec(r.out)![1]!;
