@@ -48,7 +48,7 @@ function buildSseFrames(): string[] {
     index: 0,
     content_block: { type: "text", text: "" },
   });
-  for (const piece of ["Hallo", ", ", "Welt", "!"]) {
+  for (const piece of ["Hello", ", ", "world", "!"]) {
     push("content_block_delta", {
       type: "content_block_delta",
       index: 0,

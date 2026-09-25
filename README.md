@@ -36,7 +36,7 @@ Currently we **only** support **Claude Code**.
 ## Install
 
 ```bash
-npm install -g vantage-ai-cli
+npm install -g @jovan158/vantage
 ```
 
 The command is `vantage`. To install from a checkout instead:
@@ -46,7 +46,7 @@ git clone https://github.com/Jovan158/vantage.ai.git
 cd vantage.ai
 npm install
 npm pack
-npm install -g ./vantage-ai-cli-0.1.0.tgz
+npm install -g ./jovan158-vantage-0.1.0.tgz
 ```
 
 ## Quick start

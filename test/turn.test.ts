@@ -96,11 +96,11 @@ test("prompt preview drops injected system-reminder blocks", () => {
       role: "user",
       content: [
         { type: "text", text: "<system-reminder>\n# userEmail\nThe user's email address is a@b.io.\n</system-reminder>" },
-        { type: "text", text: "Hallo, fix the login bug" },
+        { type: "text", text: "Hi, fix the login bug" },
       ],
     }],
   });
-  assert.equal(extractUserPrompt(body), "Hallo, fix the login bug");
+  assert.equal(extractUserPrompt(body), "Hi, fix the login bug");
 
   // Same, when the reminder shares one text block with the message.
   const inline = JSON.stringify({
