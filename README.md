@@ -18,10 +18,6 @@ Vantage is a free, open-source cost and usage monitor, guardrail and session log
 
 **Everything stays on your machine.** Vantage sends no telemetry and changes nothing in Claude Code. The only request it makes on its own is `vantage pricing update`, and only when you run it.
 
-<p align="center">
-  <img alt="vantage watch: what Claude is doing, the 5-hour and weekly limits, the session's cost and every tool call" src="images/watch.png" width="90%">
-</p>
-
 ## Why
 
 - **Limits arrive without warning.** You find out you hit the 5-hour limit when Claude stops mid-task. Vantage shows your quota live, forecasts whether your pace lasts until the reset, and warns you before you hit it.
@@ -89,6 +85,11 @@ Options for `run`:
 | `--no-memory` | Don't pass project memory to Claude Code |
 | `--max-cost <usd>` | Ask before every action once the estimated cost reaches this |
 | `--max-quota <percent>` | The same, once a quota window is this full |
+
+Example of `vantage watch`:
+<p align="center">
+  <img alt="vantage watch: what Claude is doing, the 5-hour and weekly limits, the session's cost and every tool call" src="images/watch.png" width="90%">
+</p>
 
 ## Configuration
 
