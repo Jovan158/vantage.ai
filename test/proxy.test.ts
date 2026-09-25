@@ -1,4 +1,3 @@
-// Ports the spike's assertions into the standard test runner (node:test).
 // Proves the proxy streams transparently AND extracts usage from real SSE.
 //
 // Run:  npm test   (node --experimental-strip-types --test test/*.test.ts)
@@ -56,7 +55,7 @@ test("proxy streams transparently and extracts usage", async () => {
 
   // 1. byte-for-byte transparency
   assert.ok(body.equals(mock.fullBody), "client bytes must equal upstream bytes");
-  assert.ok(body.toString().includes("Hallo"), "forwarded body is readable SSE");
+  assert.ok(body.toString().includes("Hello"), "forwarded body is readable SSE");
 
   // 2. usage extraction
   assert.ok(usage, "a usage event must be emitted");

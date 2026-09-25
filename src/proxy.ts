@@ -1,9 +1,7 @@
-// Transparent streaming reverse proxy ("Schicht B"). Forwards every request
+// Transparent streaming reverse proxy (layer B in docs/CONCEPT.md). Forwards every request
 // verbatim to the upstream provider and streams the response body back
 // chunk-by-chunk (no buffering, so SSE stays live), teeing the bytes into a
 // usage extractor. On stream end it emits a typed UsageEvent.
-//
-// Proven byte-for-byte transparent in spike/proxy-passthrough.
 
 import http from "node:http";
 import zlib from "node:zlib";

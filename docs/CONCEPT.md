@@ -317,5 +317,6 @@ them — existing hooks stay in place.
   (problem ①), and a wrongly distilled entry would poison every future session,
   because memory is injected into the context. An optional `--llm` for deeper
   distillation remains possible, but must be explicit.
-- **Publishing**: the npm names `vantage` and `vantage-ai` are not available; the
-  package is published as `vantage-ai-cli` (the command stays `vantage`).
+- **Publishing**: the npm name `vantage` is taken and `vantage-ai` is too close
+  to existing packages; the package is published as `@jovan158/vantage` (the
+  command stays `vantage`).

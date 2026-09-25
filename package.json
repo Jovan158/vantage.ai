@@ -1,5 +1,5 @@
 {
-  "name": "vantage-ai-cli",
+  "name": "@jovan158/vantage",
   "version": "0.1.0",
   "description": "See and control what your coding agent does: live cost and quota, approvals, secret warnings, session replay, change summaries, project memory. Currently for Claude Code.",
   "homepage": "https://github.com/Jovan158/vantage.ai#readme",
@@ -51,5 +51,8 @@
   "devDependencies": {
     "@types/node": "^26.6.1",
     "typescript": "^7.0.2"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

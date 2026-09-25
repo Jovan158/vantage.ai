@@ -418,4 +418,3 @@ addition — no change to the core.
 | `src/commands/` | One module per command (`run`, `watch`, `sessions`, `pricing`, …) and the shared terminal output |
 | `src/session-meta.ts` | A session's metadata (isolation, working-tree snapshots) |
 | `src/prune.ts` | `vantage sessions prune`: what is deleted, what stays |
-| `spike/` | The original throwaway prototype that proved the core assumption |
