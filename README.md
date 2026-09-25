@@ -80,7 +80,6 @@ While Claude Code's chat is open, Vantage never writes into its terminal: alerts
 | `vantage policy` · `vantage policy init` | Show the rules in effect · create a starter rule file |
 | `vantage pricing` · `vantage pricing update` | Show prices · fetch the current official list |
 | `vantage doctor` | Check the setup: Claude Code, hook, git, rules, prices |
-| `vantage demo` | Run the whole chain against a mock API (no account needed) |
 
 Options for `run`:
 
@@ -149,7 +148,7 @@ Each session is recorded in the project's `.vantage/sessions/`, including excerp
 
 ## Contributing
 
-Issues and pull requests are welcome. To work on Vantage, clone the repository, run `npm install` and `npm test`; Node.js runs the TypeScript source directly, without a build step. Please report security issues privately through the repository's *Security* tab rather than in a public issue. Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+Issues and pull requests are welcome. To work on Vantage, clone the repository, run `npm install` and `npm test`; Node.js runs the TypeScript source directly, without a build step. `vantage demo` runs the whole chain against a mock API, without Claude Code or an account. Please report security issues privately through the repository's *Security* tab rather than in a public issue. Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
