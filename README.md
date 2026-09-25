@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>See and control what your coding agent does.</b><br>
-  Live cost and limits, approvals for files and commands, secret warnings and a record of every session — for Claude Code.
+  Live cost and limits, approvals for files and commands, secret warnings and a record of every session.
 </p>
 
 <p align="center">
