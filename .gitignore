@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+
+# Vantage runtime state (memory under .vantage/memory/ IS committed)
+.vantage/sessions/
+.vantage/worktrees/
+
+# npm pack output
+*.tgz

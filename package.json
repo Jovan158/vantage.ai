@@ -1,0 +1,55 @@
+{
+  "name": "vantage-ai-cli",
+  "version": "0.1.0",
+  "description": "See and control what your coding agent does: live cost and quota, approvals, secret warnings, session replay, change summaries, project memory. Currently for Claude Code.",
+  "homepage": "https://github.com/Jovan158/vantage.ai#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jovan158/vantage.ai.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Jovan158/vantage.ai/issues"
+  },
+  "type": "module",
+  "bin": {
+    "vantage": "bin/vantage.mjs"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "vantage": "node --experimental-strip-types src/cli.ts",
+    "demo": "node --experimental-strip-types src/cli.ts demo",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "pricing:snapshot": "node --experimental-strip-types scripts/pricing-snapshot.ts",
+    "clean": "node -e \"import('node:fs').then(fs=>fs.rmSync('dist',{recursive:true,force:true}))\"",
+    "prepack": "npm run clean && npm run build"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "examples",
+    "docs",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "keywords": [
+    "ai",
+    "cli",
+    "claude",
+    "claude-code",
+    "coding-agent",
+    "proxy",
+    "observability",
+    "tokens",
+    "cost",
+    "approvals"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.1",
+    "typescript": "^7.0.2"
+  }
+}

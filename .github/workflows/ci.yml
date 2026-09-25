@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows is here because a Windows user hit `rm -rf` in the clean
+        # script — a failure no Linux-only run could have caught.
+        os: [ubuntu-latest, windows-latest]
+        # 22.6 is the floor declared in package.json engines (type stripping);
+        # 24 guards against regressions on current Node.
+        node: ["22.x", "24.x"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck (src + test)
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Runs `prepack` (clean + build) on every OS — the exact step that broke
+      # on Windows. --dry-run packs nothing but executes the lifecycle scripts.
+      - name: Pack (portability check)
+        run: npm pack --dry-run
+
+  package:
+    # The distributable artifact is only real if it installs and runs somewhere
+    # else — so pack it and exercise the CLI from a clean consumer project.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+
+      - run: npm ci
+
+      # Pack and install in one step, taking the tarball name from npm itself.
+      # Globbing for a hardcoded name couples CI to the package name — renaming
+      # the package silently broke this once already.
+      - name: Pack (runs the build via prepack) and install into a clean project
+        run: |
+          mkdir -p /tmp/pkg
+          TARBALL=$(npm pack --pack-destination /tmp/pkg | tail -1)
+          echo "packed: $TARBALL"
+          mkdir -p /tmp/consumer && cd /tmp/consumer
+          npm init -y >/dev/null
+          npm install "/tmp/pkg/$TARBALL"
+
+      - name: Smoke-test the installed CLI
+        run: |
+          cd /tmp/consumer
+          ./node_modules/.bin/vantage --help
+          ./node_modules/.bin/vantage policy
+          # The generated price list must ship in the build.
+          ./node_modules/.bin/vantage pricing | grep -q claude-opus-5-5
+          # Full proxy chain against the bundled mock upstream — no API key.
+          ./node_modules/.bin/vantage demo
