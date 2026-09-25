@@ -1,0 +1,29 @@
+# TEMPORARY: fetches the official price pages once so their format can be
+# read. Removed again before this branch is merged.
+name: Probe price pages
+on:
+  push:
+    branches: ["claude/pensive-dijkstra-wxw8rz"]
+    paths: [".github/workflows/probe-prices.yml"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch
+        run: |
+          for u in \
+            "https://developers.openai.com/api/docs/pricing.md" \
+            "https://developers.openai.com/api/docs/pricing" \
+            "https://platform.openai.com/docs/pricing.md" \
+            "https://platform.openai.com/docs/pricing" \
+            "https://ai.google.dev/gemini-api/docs/pricing.md.txt" \
+            "https://ai.google.dev/gemini-api/docs/pricing"; do
+            code=$(curl -sL -A "Mozilla/5.0 vantage-price-probe" -o page.txt -w '%{http_code} %{content_type} %{url_effective}' "$u")
+            echo "=== $u -> $code $(wc -c < page.txt) bytes"
+          done
+      - name: OpenAI markdown
+        run: curl -sL -A "Mozilla/5.0 vantage-price-probe" "https://developers.openai.com/api/docs/pricing.md" | head -c 60000 || true
+      - name: Google markdown
+        run: curl -sL -A "Mozilla/5.0 vantage-price-probe" "https://ai.google.dev/gemini-api/docs/pricing.md.txt" | head -c 90000 || true
