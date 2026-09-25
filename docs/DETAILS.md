@@ -388,7 +388,7 @@ addition — no change to the core.
 | Path | Role |
 |------|------|
 | `src/proxy.ts` | Transparent streaming reverse proxy (layer B) |
-| `src/usage.ts` | SSE usage extractor (tokens from the stream) |
+| `src/usage.ts` | The token usage of one model call |
 | `src/meter.ts` | Aggregated totals, rate and status line |
 | `src/ratelimit.ts` | Rate-limit headers → limit forecast (unified and classic) |
 | `src/upstream.ts` | Egress connector (`HTTPS_PROXY`/`NO_PROXY`, CONNECT tunnel) |
@@ -396,7 +396,7 @@ addition — no change to the core.
 | `src/git.ts` | Git session isolation (worktree/branch, aggregated diff) and working-tree snapshots |
 | `src/replay.ts` | Session replay: event log → timeline, and the session list |
 | `src/watch.ts` | Live view for the second terminal (follows the event log) |
-| `src/turn.ts` | Turn content (prompt/reply/tools) and redaction |
+| `src/turn.ts` | Reads each response — tokens, reply, tools — and the prompt, with redaction |
 | `src/memory.ts` | Project memory (`.vantage/memory/`, compiling and injecting it) |
 | `src/harvest.ts` | Assisted harvest: session material → memory suggestion |
 | `src/policy.ts` | Action-type classification and policy levels (②) |

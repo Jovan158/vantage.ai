@@ -39,11 +39,6 @@ export function initMemory(cwd: string): { created: string[]; existing: string[]
   return { created, existing };
 }
 
-// True if a memory store exists with any non-template content.
-export function hasMemory(cwd: string): boolean {
-  return compileMemory(cwd) !== null;
-}
-
 // Concatenate the memory files into one context string, or null if there is
 // nothing meaningful to inject.
 export function compileMemory(cwd: string): string | null {

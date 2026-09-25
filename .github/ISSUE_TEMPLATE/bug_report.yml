@@ -1,0 +1,42 @@
+name: Bug report
+description: Something in Vantage does not work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. vantage run claude
+        2. ...
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `vantage doctor`
+      description: It shows your versions of Vantage, Node.js and Claude Code, and whether the approval hook works.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Error output or screenshot
+      description: Remove anything private first — file paths with your name, API keys, prompts you do not want to share.

@@ -2,7 +2,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createTurnExtractor, extractTurnFromJson, extractUserPrompt, extractRequestInfo, stripInjectedContext } from "../src/turn.ts";
+import { createTurnExtractor, extractTurnFromJson, extractRequestInfo, stripInjectedContext } from "../src/turn.ts";
+
+const extractUserPrompt = (body: string): string | null => extractRequestInfo(body).prompt;
 
 function frame(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -142,4 +144,25 @@ test("a request without tools is the agent's own background call", () => {
   assert.equal(extractRequestInfo(bg).background, true);
   // Cut off at the capture limit: only huge chat turns get there.
   assert.equal(extractRequestInfo('{"messages":[{"role":"user","content":"x').background, false);
+});
+
+test("SSE frames split across network chunks are read whole", () => {
+  const ex = createTurnExtractor();
+  const whole = frame("message_start", { type: "message_start", message: { model: "claude-sonnet-5", usage: { input_tokens: 7, output_tokens: 1 } } });
+  const mid = Math.floor(whole.length / 2);
+  ex.feed(whole.slice(0, mid));
+  ex.feed(whole.slice(mid));
+  assert.equal(ex.end().usage.input_tokens, 7);
+});
+
+test("JSON responses: cache tokens are read, and errors or junk give no turn", () => {
+  const t = extractTurnFromJson(JSON.stringify({
+    model: "claude-haiku-4-5",
+    usage: { input_tokens: 5, output_tokens: 9, cache_read_input_tokens: 100, cache_creation_input_tokens: 20 },
+  }));
+  assert.equal(t!.usage.model, "claude-haiku-4-5");
+  assert.equal(t!.usage.cache_read_input_tokens, 100);
+  assert.equal(t!.usage.cache_creation_input_tokens, 20);
+  assert.equal(extractTurnFromJson(JSON.stringify({ type: "error" })), null);
+  assert.equal(extractTurnFromJson("not json"), null);
 });

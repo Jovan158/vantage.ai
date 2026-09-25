@@ -31,7 +31,6 @@
     "dist",
     "bin",
     "examples",
-    "docs",
     "README.md",
     "CHANGELOG.md"
   ],
