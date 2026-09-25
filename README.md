@@ -26,6 +26,13 @@ Currently we **only** support **Claude Code**.
   the AI coding agent at every start.
 
 
+## Requirements
+
+- Node.js 22.6 or newer
+- Claude Code, installed and logged in (subscription or API key). Vantage uses
+  that login and needs no key of its own.
+- Optional: git, for change summaries and `--isolate`
+
 ## Install
 
 Vantage is not on npm yet. Install it from a checkout:
