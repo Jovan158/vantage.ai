@@ -1,6 +1,6 @@
 // Agent adapters. The core knows only this interface; each adapter declares how
 // to launch a given CLI agent and which env vars redirect its LLM traffic
-// through the Vantage proxy (CONCEPT.md §1, "Der Klebstoff").
+// through the Vantage proxy (CONCEPT.md §1, "The glue").
 
 import type { ProviderName } from "../providers/index.ts";
 

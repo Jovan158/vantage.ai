@@ -1,113 +1,113 @@
-# Vantage — Details & Hintergründe
+# Vantage — Details and background
 
-Ergänzt die [README](../README.md) um Beispielausgaben und die Gründe hinter den
-Designentscheidungen. Das ursprüngliche Konzept steht in [`CONCEPT.md`](CONCEPT.md).
-Die Beispielausgaben stammen aus echten Läufen; Beträge darin sind illustrativ.
+Adds example output and the reasons behind the design decisions to the
+[README](../README.md). The original concept is in [`CONCEPT.md`](CONCEPT.md).
+The example output comes from real runs; amounts in it are illustrative.
 
-## ① Tokens, Kosten, Limits
+## ① Tokens, cost, limits
 
-`vantage run claude` wrappt die echte
-Claude-Code-CLI, leitet an `api.anthropic.com` durch (der Proxy respektiert
-`HTTPS_PROXY`/`NO_PROXY`) und extrahiert reale Usage — inkl. gzip/br-Dekompression
-der beobachteten Kopie und Metering von Streaming- *und* JSON-Antworten. Zusätzlich
-liest der Proxy die **Rate-Limit-Header** aus und zeigt eine echte Limit-Prognose:
+`vantage run claude` wraps the real Claude Code CLI, passes its traffic through
+to `api.anthropic.com` (the proxy honors `HTTPS_PROXY`/`NO_PROXY`) and extracts
+the real usage — decompressing gzip/br on the observed copy, and metering both
+streaming *and* JSON responses. The proxy also reads the **rate-limit headers**
+and shows a real forecast of your limits:
 
 ```
 [vantage] session end · 2 request(s) · in 66 · out 45 · cache 66414 · ~$0.0208
 [vantage] quota 5h 53% used reset 1h50m · 7d 6% used reset 156h50m
 ```
 
-Die Quota-Zeile deckt beide Anbieter-Formen ab: **Unified-Fenster** (Abo/Pro-Max,
-was Claude Code real zurückgibt — 5h-/7d-Auslastung + Reset) und die **klassischen
-Per-Key-Buckets** (API-Key-Billing — requests/tokens remaining). Genau der
-Abo-Quota-Fall, den reine Token-Zählung nicht abbilden kann.
+The quota line covers both forms the API uses: **unified windows**
+(subscription/Pro/Max, what Claude Code actually gets back — 5-hour and 7-day
+utilization plus reset) and the **classic per-key buckets** (API-key billing —
+requests/tokens remaining). That subscription quota is exactly what counting
+tokens alone cannot show.
 
-**Kosten sind eine Schätzung zu API-Listenpreisen:** exakter Lookup pro
-Modell-ID, Cache-Writes getrennt nach 5-Minuten- und 1-Stunden-TTL. Unbekannte
-Modelle werden als `price unknown` ausgewiesen statt geraten — Tokens werden
-trotzdem gezählt. Im Abo ist der Dollarbetrag nur ein API-Äquivalent; das echte
-Signal ist die Quota-Zeile.
+**Cost is an estimate at API list prices:** an exact lookup per model ID, cache
+writes split by 5-minute and 1-hour TTL. Unknown models are shown as `price
+unknown` instead of guessed — their tokens are still counted. On a
+subscription, the dollar amount is only an API equivalent; the real signal is
+the quota line.
 
-**Woher die Preise kommen.** Keine Zahl ist von Hand eingetippt. Die einzige
-Quelle ist Anthropics offizielle Preisseite in ihrer Markdown-Form
-(`…/pricing.md`), gelesen von *einem* Parser (`src/pricing-source.ts`):
+**Where the prices come from.** No number is typed by hand. The only source is
+Anthropic's official pricing page in its Markdown form (`…/pricing.md`), read by
+*one* parser (`src/pricing-source.ts`):
 
 ```
-offizielle Preisseite ─► Parser ─┬─► src/pricing-snapshot.ts   generiert, wird mit Vantage ausgeliefert
+official pricing page ─► parser ─┬─► src/pricing-snapshot.ts   generated, ships with Vantage
                                  └─► ~/.vantage/pricing.json    `vantage pricing update`
 ```
 
-- `vantage pricing` zeigt die aktiven Preise, ihren Stand und ihre Quelle.
-- `vantage pricing update` holt die aktuelle Liste — **nur auf diesen Befehl hin**.
-  Vantage lädt nie selbstständig etwas nach; ein Meter, der unaufgefordert
-  Traffic erzeugt, widerspräche seinem Zweck.
-- Beim Zusammenführen gewinnt pro Modell die **neuere** Quelle: ein frisches
-  Update schlägt ein altes Release, ein neues Release ein altes Update.
-- Der Parser ist streng: Spalten per Überschrift statt Position, jeder Preis
-  muss `$X / MTok` lauten, jede Zeile eine Plausibilitätsprüfung bestehen
-  (Cache-Read < Input < 5m-Write < 1h-Write, Output > Input — fängt vertauschte
-  Spalten). Ändert sich das Seitenformat, gibt es einen Fehler und nichts wird
-  geschrieben — nie falsche Zahlen im Meter.
-- Taucht ein Modell ohne Preis auf oder ist die Liste älter als 60 Tage, sagt
-  das Session-Ende es mit einer Zeile.
-- Ein wöchentlicher CI-Job (`Pricing`, montags) hält die ausgelieferte Liste
-  ohne Zutun aktuell: Hat sich ein Preis geändert oder ist ein Modell dazu-
-  gekommen, erzeugt er die Liste neu, lässt Typprüfung und Tests laufen und
-  committet direkt auf den Standard-Branch. Modelle, die nicht mehr auf der
-  Seite stehen, bleiben drin, damit alte Sessions ihre Preise behalten. Er
-  ändert nichts und schlägt fehl (GitHub schickt eine Mail), wenn die Seite
-  sich nicht mehr lesen lässt, ein Preis sich um mehr als das Zehnfache
-  verschiebt oder die Tests scheitern — das soll ein Mensch ansehen. Die
-  Tests rechnen dafür mit einer festen Test-Preisliste
-  (`test/price-fixture.ts`), nicht mit den echten Preisen.
+- `vantage pricing` shows the prices in use, their date and their source.
+- `vantage pricing update` fetches the current list — **only when you run it**.
+  Vantage never downloads anything on its own; a meter that creates traffic
+  unasked would defeat its purpose.
+- When both are present, the **newer** source wins per model: a fresh update
+  beats an old release, a new release beats an old update.
+- The parser is strict: columns are found by heading, not position, every price
+  must read `$X / MTok`, and every row must pass a plausibility check (cache
+  read < input < 5m write < 1h write, output > input — which catches swapped
+  columns). If the page format changes, it fails and writes nothing — never
+  wrong numbers in the meter.
+- When a model without a price shows up, or the list is older than 60 days, the
+  end of the session says so in one line.
+- A weekly CI job (`Pricing`, on Mondays) keeps the bundled list current with no
+  one involved: when a price changed or a model was added, it regenerates the
+  list, runs the type check and the tests, and commits straight to the default
+  branch. Models the page no longer lists stay in, so old sessions keep their
+  prices. It changes nothing and fails (GitHub sends a mail) when the page no
+  longer parses, a price moves by more than 10x, or the tests fail — those
+  need a person. For this, the tests price against a fixed test list
+  (`test/price-fixture.ts`), not the real prices.
 
-Bei Annäherung ans Limit warnt Vantage auffällig — **einmalig** beim Überschreiten
-der Schwelle (kein Spam), re-armiert nach Reset, und meldet akute Fälle
-(`rejected`, `retry-after`) sofort:
+Close to a limit, Vantage warns clearly — **once** when the threshold is crossed
+(no spam), re-armed after the reset — and reports acute cases (`rejected`,
+`retry-after`) right away:
 
 ```
 [vantage] warning: 5-hour limit 92% used — getting close (resets in 18m)
 ```
 
-Schwelle konfigurierbar über `VANTAGE_QUOTA_WARN` (Prozent `80` oder Anteil `0.8`,
-Default 90 %). Diagnose mit `VANTAGE_DEBUG=1` (loggt Upstream-Status, Content-Type,
-Encoding und alle Rate-Limit-Header).
+The threshold is set with `VANTAGE_QUOTA_WARN` (percent `80` or fraction `0.8`,
+default 90%). For diagnosis, `VANTAGE_DEBUG=1` logs the upstream status,
+content type, encoding and all rate-limit headers.
 
 ## Budget
 
-Warnen allein verhindert nicht, dass eine Session weiterläuft. Mit einem Budget
-greift Vantage ein:
+A warning alone does not stop a session. With a budget, Vantage steps in:
 
 ```
-vantage run --max-cost 2 claude       # ab ~$2 geschätzten Session-Kosten
-vantage run --max-quota 80 claude     # ab 80 % eines Abo-Fensters (5h oder 7d)
+vantage run --max-cost 2 claude       # from ~$2 estimated session cost
+vantage run --max-quota 80 claude     # from 80% of a subscription window (5h or 7d)
 ```
 
-Ist das Budget erreicht, braucht **jede Aktion deine Freigabe** — Claude Code
-fragt vor dem nächsten Tool-Aufruf nach. Bewusst kein harter Abbruch: Ein Agent,
-der mitten in einer Änderung beendet wird, hinterlässt halbfertige Dateien. `deny`
-aus der Policy bleibt `deny`. Ein Kosten-Budget bleibt für die Session erreicht
-(Kosten sinken nicht); ein Quota-Budget hebt sich wieder auf, sobald das Fenster
-zurückgesetzt ist.
+Once the budget is reached, **every action needs your approval** — Claude Code
+asks before the next tool call. Deliberately not a hard stop: an agent killed in
+the middle of a change leaves half-written files behind. `deny` from the policy
+stays `deny`. A cost budget stays reached for the session (cost never goes
+down); a quota budget lifts again once the window has reset.
 
 ```
 [vantage] ALERT: budget reached — session cost ~$2.03 reached the $2.00 budget. Every action now needs your approval.
 ```
 
-Umsetzung: Der Hook ist bei Claude Code ein eigener Prozess pro Tool-Aufruf und
-teilt keinen Speicher mit `vantage run`. Vantage schreibt deshalb beim Erreichen
-eine kleine Zustandsdatei in den Session-Ordner, die der Hook bei jedem Aufruf
-liest. Was das Budget nicht sehen kann, sagt Vantage einmalig: Anfragen an
-Modelle ohne bekannten Preis zählen nicht zum Kosten-Budget, und API-Key-Konten
-liefern keine 5h/7d-Fenster für das Quota-Budget. Auch als Umgebungsvariablen:
-`VANTAGE_MAX_COST`, `VANTAGE_MAX_QUOTA`. Replay und `watch` zeigen den Zeitpunkt.
+How it works: Claude Code runs the hook as a separate process for each tool call,
+sharing no memory with `vantage run`. So Vantage writes a small state file into
+the session folder when the budget is reached, and the hook reads it on every
+call. Claude Code can start a tool while the reply that asked for it is still
+streaming, before that reply's cost is known; so the hook first waits (at most
+3 seconds) until the reply has been metered. What the budget cannot see,
+Vantage says once: requests to models without a known price do not count
+toward a cost budget, and API-key accounts report no 5h/7d windows for a quota
+budget. Also available as environment variables: `VANTAGE_MAX_COST`,
+`VANTAGE_MAX_QUOTA`. Replay and `watch` show when it was reached.
 
-## ② Freigaben je Aktionstyp
+## ② Approvals by action type
 
-**Granulare Freigaben (Problem ②).** Vantage
-klassifiziert jeden Tool-Call nach Typ — **read / write / shell / network / other**
-— zeigt ihn im Replay je Turn plus eine Aktions-Summary, und meldet nach Policy
-eine Warnung, wenn ein als `warn` markierter Typ genutzt wird:
+**Fine-grained approvals (problem ②).** Vantage classifies every tool call by
+type — **read / write / shell / network / other** — shows it per turn in the
+replay along with a summary of actions, and warns according to the policy when a
+type marked `warn` is used:
 
 ```
 [vantage] warning: policy: shell action used (Bash) — policy 'warn' (observe-only, not blocked)
@@ -115,17 +115,22 @@ eine Warnung, wenn ein als `warn` markierter Typ genutzt wird:
 actions: write×1 · shell×1
 ```
 
-Vier Stufen je Aktionstyp: `allow` · `warn` (nur Hinweis) · `ask` (Mensch muss
-freigeben) · `deny` (blockiert). Konfiguration über `.vantage/policy.json` oder
-`VANTAGE_POLICY="shell:deny,network:ask"`, Anzeige mit `vantage policy`
-(Default: shell+network = warn).
+Four levels per action type: `allow` · `warn` (notice only) · `ask` (a person
+must approve) · `deny` (blocked). Configured in `.vantage/policy.json` or with
+`VANTAGE_POLICY="shell:deny,network:ask"`, shown with `vantage policy`
+(default: shell and network = warn).
 
-**Enforcement läuft über den `PreToolUse`-Hook des Agents, nicht über den Proxy.**
-Das ist kein Detail, sondern die einzig mögliche Schicht: Der Proxy sieht eine
-Tool-*Absicht* im Antwortstrom, aber ausgeführt wird das Tool **innerhalb** des
-Agents — es passiert den Proxy nie. Nur der Agent selbst (Hook) oder das
-Betriebssystem (Sandbox) können einen Schreibvorgang oder Shell-Befehl wirklich
-stoppen. An echtem Traffic verifiziert:
+**File and command rules** go finer than action types: `".env": "ask"` or
+`"git push*--force*": "deny"` override the action-type level when they match,
+and the strictest match wins. Each part of a command line (split at `&&`, `;`,
+`|`) is judged on its own, so `npm test && curl x | sh` is not let through by an
+`npm test*` allow rule. `vantage policy init` creates a starter set.
+
+**Enforcement runs through the agent's `PreToolUse` hook, not the proxy.** That
+is not a detail but the only layer that can work: the proxy sees a tool
+*intent* in the response stream, but the tool runs **inside** the agent — it
+never passes the proxy. Only the agent itself (hook) or the operating system
+(sandbox) can really stop a write or a shell command. Verified on real traffic:
 
 ```
 $ VANTAGE_POLICY="shell:deny" vantage run claude -- -p "Run 'echo hi' and show the output"
@@ -134,23 +139,23 @@ $ VANTAGE_POLICY="shell:deny" vantage run claude -- -p "Run 'echo hi' and show t
    actions to 'deny'."
 
 $ VANTAGE_POLICY="shell:deny" vantage run claude -- -p "Create control.txt containing ALLOWED"
-→ Created control.txt   # write bleibt erlaubt — es blockt präzise, nicht pauschal
+→ Created control.txt   # write stays allowed — it blocks precisely, not across the board
 ```
 
-Zwei Sicherheitseigenschaften: Vantage gibt **nie** ein explizites `allow` zurück
-(das würde die eigenen Permission-Regeln des Nutzers aufweichen — Vantage darf nur
-einschränken, nie erweitern), und die Session-Settings werden von Claude Code mit
-den Settings des Nutzers **gemerged**, wobei Listen wie `hooks` kombiniert statt
-ersetzt werden — vorhandene Hooks bleiben also erhalten. Agents ohne Hook-Mechanik
-bleiben beobachtend, und Vantage sagt das ausdrücklich statt Schutz vorzutäuschen.
+Two safety properties: Vantage **never** returns an explicit `allow` (that would
+loosen the user's own permission rules — Vantage may only restrict, never
+widen), and Claude Code **merges** the session settings with the user's own,
+combining lists such as `hooks` instead of replacing them — existing hooks stay
+in place. Agents without a hook mechanism stay observe-only, and Vantage says so
+plainly instead of pretending to protect.
 
-## ③ Live-Ansicht und Replay
+## ③ Live view and replay
 
-**Live-Ansicht im zweiten Terminal — bewusst kein Overlay.** `vantage watch`
-zeigt die laufende Session live und folgt automatisch der zuletzt gestarteten
-Session, auch aus einem anderen Ordner. Jede Zeile beantwortet eine Frage, die
-man mitten in der Arbeit hat: Was macht Claude gerade? Reicht mein Limit? Woran
-hat Claude gearbeitet? Was kostet das?
+**Live view in a second terminal — deliberately no overlay.** `vantage watch`
+shows the running session live and automatically follows the most recently
+started one, even from another folder. Every line answers a question you have in
+the middle of work: What is Claude doing right now? Will my limit last? What
+has Claude worked on? What does it cost?
 
 ```
 vantage · running · 3m · claude-opus-5-5 · vantage.ai
@@ -177,41 +182,39 @@ Activity · read×2 · write×1 · shell×1 · 1 file(s) edited
   14:03:20  asked   Bash      npm test
 ```
 
-- **Status:** „Claude is thinking…“ (Anfrage läuft), „Claude is working: Edit
-  src/app.ts“ (führt Tools aus), „Approval requested 15s ago“ (eine `ask`-Regel
-  oder ein Budget hat eine Rückfrage ausgelöst), „Claude replied“.
-- **Limits:** Balken grün/gelb/rot, Reset als Uhrzeit, der Anteil dieser Session
-  und eine Prognose: Reicht das aktuelle Tempo bis zum Reset? Die Fenster gelten
-  fürs ganze Konto, andere Claude-Nutzung zählt also mit.
-- **work:** Nachrichten von dir gegenüber Modellaufrufen — Claude ruft das Modell
-  nach jedem Tool erneut auf. Hintergrund-Aufrufe von Claude Code (z. B. „ist der
-  Agent fertig?“) zählen bei Kosten mit, nicht als Turn.
-- **context:** wie viele Tokens mit der letzten Nachricht mitgeschickt wurden, und
-  wie viel davon aus dem Cache kam (günstig).
-- **Mehrere Sessions:** Laufen mehrere gleichzeitig, zeigt `vantage watch` eine
-  Übersicht — die Limits einmal (sie gelten fürs ganze Konto), darunter jede
-  Session mit Status, Kosten und Nachrichten. `vantage watch <id>` zeigt eine
-  davon im Detail, egal aus welchem Ordner. Laufend heißt: kein Session-Ende im
-  Protokoll und der `vantage run`-Prozess lebt noch — abgestürzte Sessions
-  erscheinen also nicht als laufend.
-- **Activity:** die letzten Tool-Aufrufe mit Datei, Befehl oder URL — relativ zum
-  Projekt —, markiert, wenn Vantage blockiert (`blocked`) oder nachgefragt
-  (`asked`) hat.
+- **Status:** "Claude is thinking…" (a request is in flight), "Claude is
+  working: Edit src/app.ts" (running tools), "Approval requested 15s ago" (an
+  `ask` rule or a budget asked you), "Claude replied".
+- **Limits:** bars in green/yellow/red, the reset as a time of day, this
+  session's share, and a forecast: does the current pace last until the reset?
+  The windows apply to the whole account, so other Claude use counts too.
+- **work:** your messages against model calls — Claude calls the model again
+  after every tool. Claude Code's own background calls (such as "is the agent
+  done?") count toward cost, not as a turn.
+- **context:** how many tokens were sent with the last message, and how much of
+  all input came from the cache (cheap).
+- **Several sessions:** when several run at once, `vantage watch` shows an
+  overview — the limits once (they apply to the whole account), below them each
+  session with status, cost and messages. `vantage watch <id>` shows one of them
+  in detail, from any folder. Running means: no session end in the log and the
+  `vantage run` process is still alive — so crashed sessions do not show as
+  running.
+- **Activity:** the latest tool calls with file, command or URL — relative to the
+  project — marked when Vantage blocked (`blocked`) or asked (`asked`).
 
-Warum kein Overlay über dem Agent? Der Agent besitzt sein Terminal (`stdio:
-"inherit"`) und bringt eine eigene TUI mit. Ein Overlay hieße: Vantage übernimmt
-und rendert neu — genau die Bruchstelle aus Konzept §6b („beobachten, nicht neu
-rendern"), die die UI des gewrappten Tools zerstören kann. Die Live-Ansicht läuft
-deshalb in einem eigenen Terminal/tmux-Pane, gespeist aus dem append-only
-Event-Log: **null Risiko für das Agent-Terminal, null Abhängigkeiten.**
+Why no overlay on top of the agent? The agent owns its terminal (`stdio:
+"inherit"`) and brings its own TUI. An overlay would mean Vantage takes over and
+redraws — exactly the breaking point from concept §6b ("observe, don't
+re-render") that can wreck the wrapped tool's UI. So the live view runs in its
+own terminal or tmux pane, fed from the append-only event log: **no risk to the
+agent's terminal, no dependencies.**
 
-Konsequent zu Ende gedacht heißt das: Solange die Chat-Oberfläche von Claude Code
-offen ist, schreibt `vantage run` **gar nichts** in dieses Terminal. Eine frühere
-Version gab nach jeder Antwort eine Statuszeile aus; die landete irgendwo in der
-Oberfläche, verdeckte das Eingabefeld und verschwand beim nächsten Neuzeichnen.
-Jetzt entfallen Routinezeilen (sie stehen in `vantage watch`), und Warnungen —
-Geheimnisse, Quota, Budget, Policy — erscheinen **im Chat von Claude Code
-selbst**, direkt nach der Antwort:
+Taken to its conclusion, that means: while Claude Code's chat UI is open,
+`vantage run` writes **nothing** into that terminal. An earlier version printed
+a status line after every reply; it landed somewhere in the UI, covered the
+input box and vanished at the next redraw. Now routine lines are gone (they are
+in `vantage watch`), and alerts — secrets, quota, budget, policy — appear **in
+Claude Code's chat itself**, right after the reply:
 
 ```
 ● DONE
@@ -220,20 +223,31 @@ selbst**, direkt nach der Antwort:
      your machine
 ```
 
-Dafür registriert `vantage run` im interaktiven Modus einen `Stop`-Hook, den
-Claude Code nach jeder fertigen Antwort startet. `vantage run` legt jede Warnung
-in einem Postfach im Session-Ordner ab (`outbox.jsonl`); der Hook holt sie ab
-und gibt sie als `systemMessage` zurück — Claude Codes offizieller Weg, dem
-Nutzer etwas zu zeigen. Vantage schreibt dabei nie selbst ins Terminal. Werden
-Regeln oder ein Budget durchgesetzt, liefert auch der `PreToolUse`-Hook
-wartende Warnungen mit, also schon vor dem nächsten Tool. Was beim Beenden noch
-im Postfach liegt, wird dann unter „during the session:“ ausgegeben. Im
-Druckmodus (`claude -p`) gibt es keine Oberfläche, dort gehen Warnungen wie
-gehabt direkt ins Terminal (`src/terminal.ts`, `src/outbox.ts`).
+For this, `vantage run` registers a `Stop` hook in interactive mode, which
+Claude Code starts after every finished reply. `vantage run` posts each alert to
+an outbox in the session folder (`outbox.jsonl`); the hook takes them and
+returns them as a `systemMessage` — Claude Code's official way of showing the
+user something. Vantage itself never writes into the terminal. When rules or a
+budget are enforced, the `PreToolUse` hook hands over waiting alerts too, so they
+show before the next tool. Whatever is still in the outbox at exit is printed
+then, under "during the session:". In print mode (`claude -p`) there is no UI,
+and alerts go straight to the terminal as before (`src/terminal.ts`,
+`src/outbox.ts`).
 
-**Session-Replay (Problem ③).** `vantage replay <id>` rendert den Event-Log als
-lesbare Timeline — jeder Turn mit Modell/Tokens/Kosten **und Inhalt** (letzter
-Prompt, Antworttext, aufgerufene Tools), Quota-Verlauf und Zusammenfassung:
+**Secret warnings.** Every request Claude Code sends carries the conversation so
+far — including the output of every tool it ran. Vantage scans each request for
+well-known key formats, private key blocks and `.env`-style assignments to names
+like `PASSWORD` or `API_KEY`, and names where a find came from ("the output of
+Read .env", "your message", "Claude's reply"). Only a masked prefix and the
+length are kept, never the value. Parts of the conversation already scanned are
+skipped, so long sessions stay cheap. UTF-16 files (as `>` and Out-File write
+them in Windows PowerShell 5.1) are read like any other. Vantage warns; it does
+not stop the request — holding it back would leave the secret in Claude's
+history and break the session.
+
+**Session replay (problem ③).** `vantage replay <id>` renders the event log as a
+readable timeline — every turn with model/tokens/cost **and content** (last
+prompt, reply text, tools called), quota history and a summary:
 
 ```
 session start · agent claude-code
@@ -246,32 +260,43 @@ session start · agent claude-code
  +6.0s session end · 3 turn(s) · in 98 · out 232 · cache 122k · ~$0.0609 · exit 0
 ```
 
-So sieht man, **was** der Agent über mehrere Schritte vorhatte. Prompt-/Antwort-
-Auszüge werden gekürzt gespeichert und durch einen **Redaction-Pass** von offen-
-sichtlichen Secrets/PII (E-Mails, API-Keys, Bearer-Token, JWTs) bereinigt, bevor
-sie in den Event-Log geschrieben werden (Konzept §6d).
+That shows **what** the agent intended across several steps. Prompt and reply
+excerpts are stored shortened and pass a **redaction step** that removes obvious
+secrets and personal data (email addresses, API keys, bearer tokens, JWTs)
+before they are written to the event log (concept §6d).
 
-**Nicht im Repository.** Die Protokolle enthalten Auszüge aus Prompts und
-Antworten. Beim ersten `vantage run` legt Vantage deshalb `.vantage/.gitignore`
-an, das `sessions/` und `worktrees/` ausschließt; `policy.json` und `memory/`
-bleiben versionierbar. Die eigene `.gitignore` des Projekts wird nicht
-angefasst, und eine vorhandene `.vantage/.gitignore` bleibt, wie sie ist.
+`vantage stats` sums up usage by day and project across all sessions on this
+machine; `vantage search` finds the session that read a file, ran a command or
+was asked about something.
 
-**Aufräumen.** Jede Session bleibt unter `.vantage/sessions/` liegen, bis man
-sie löscht. `vantage sessions prune` zeigt die Sessions dieses Projekts, in die
-seit 30 Tagen nichts mehr geschrieben wurde, samt Größe — gelöscht wird erst mit
-`--yes`. `--older-than 12h` / `2w` ändert das Alter, `--all` nimmt alle Projekte
-dieses Rechners dazu. Nie gelöscht werden laufende Sessions und isolierte
-Sessions, deren Worktree noch da ist (deren Branch wäre sonst ohne `vantage
-discard`). Der Index in `~/.vantage/sessions.jsonl` verliert dabei die Einträge,
-deren Protokoll nicht mehr existiert.
+**Kept out of the repository.** The logs contain excerpts of prompts and
+replies. On the first `vantage run`, Vantage therefore creates
+`.vantage/.gitignore`, which excludes `sessions/` and `worktrees/`;
+`policy.json` and `memory/` stay versionable. The project's own `.gitignore` is
+not touched, and an existing `.vantage/.gitignore` is left as it is.
 
-## ④ Git-Isolation
+**Cleaning up.** Each session stays under `.vantage/sessions/` until you delete
+it. `vantage sessions prune` lists the sessions of this project that nothing was
+written to for 30 days, with their size — they are deleted only with `--yes`.
+`--older-than 12h` / `2w` changes the age, `--all` includes every project on
+this machine. Never deleted: running sessions, and isolated sessions whose
+worktree still exists (their branch would otherwise be left without `vantage
+discard`). The index in `~/.vantage/sessions.jsonl` drops the entries whose log
+no longer exists.
 
-**Git-Session-Isolation (Problem ④).** Mit `--isolate` läuft der Agent in einem
-dedizierten Git-Worktree auf Branch `vantage/<session>` — dein Arbeitsverzeichnis
-bleibt unberührt. Am Ende committet Vantage die Änderungen auf den Branch und zeigt
-einen **aggregierten Diff**; danach entscheidest du mergen oder verwerfen:
+## ④ Change summary and git isolation
+
+**Change summary.** In a git repository, every session ends with the files it
+changed, even without isolation: Vantage takes a snapshot of the working tree
+at the start and at the end (through a temporary copy of the index, so your
+index and history stay untouched) and compares the two. `vantage review <id>`
+lists the files again, `--patch` shows the full diff. Edits you made yourself
+in the meantime are included, and the summary says so.
+
+**Git session isolation (problem ④).** With `--isolate`, the agent works in a
+dedicated git worktree on the branch `vantage/<session>` — your working directory
+stays untouched. At the end, Vantage commits the changes to that branch and
+shows an **aggregated diff**; then you decide to merge or discard:
 
 ```
 [vantage] isolated on branch vantage/…_y6rf (base bbb2b2fc) · worktree .vantage/worktrees/…
@@ -282,12 +307,12 @@ einen **aggregierten Diff**; danach entscheidest du mergen oder verwerfen:
 [vantage] discard: vantage discard …_y6rf
 ```
 
-## ⑤ Projektgedächtnis
+## ⑤ Project memory
 
-**Projektgedächtnis (Problem ⑤).** Dateibasiert unter `.vantage/memory/*.md`
-(in Git versioniert), das Vantage vor jedem Run in den Agent-Kontext kompiliert
-und **nicht-invasiv** injiziert (Claude Code: `--append-system-prompt`, kein
-Datei-Mutieren). So startet keine Session mehr bei null. End-to-end verifiziert:
+**Project memory (problem ⑤).** File-based under `.vantage/memory/*.md`
+(versioned in git), which Vantage compiles into the agent's context before every
+run and injects **without touching any file** (Claude Code:
+`--append-system-prompt`). So no session starts from zero. Verified end to end:
 
 ```
 $ vantage memory add conventions "Preferred one-word greeting is 'Ahoy'."
@@ -295,12 +320,12 @@ $ vantage run claude -- -p "Greet me in one word"           → Ahoy
 $ vantage run --no-memory claude -- -p "Greet me in one word" → Hello!
 ```
 
-Der kanonische Store ist agent-agnostisch — derselbe Kontext lässt sich pro Agent
-ins jeweils native Format kompilieren (Cross-Agent-Gedächtnis).
+The canonical store is agent-agnostic — the same context can be compiled into
+each agent's native format (memory across agents).
 
-**Harvest — assistiert, nicht automatisch.** Nach einer Session, die etwas getan
-hat, weist Vantage mit *einer* Zeile auf `vantage harvest <id>` hin. Das bereitet
-das Material auf und schlägt einen fertigen Befehl vor:
+**Harvest — assisted, not automatic.** After a session that did something,
+Vantage points to `vantage harvest <id>` in *one* line. It prepares the material
+and suggests a ready-made command:
 
 ```
 harvest · session 2026-09-18T11-31-28-722Z_0k4i
@@ -316,76 +341,81 @@ Nothing is written automatically. Record what is worth keeping:
   vantage memory add decisions "Created notes.txt containing \"HARVEST\"."
 ```
 
-Bewusst **kein** automatisches LLM-Destillieren am Session-Ende: Das würde bei
-jeder Session still Quota verbrennen — genau Problem ①, gegen das Vantage antritt —
-und ein falsch destillierter Eintrag vergiftet jede künftige Session, weil Memory
-in den Kontext injiziert wird. Die beste Zusammenfassung ohne LLM liefert ohnehin
-der Agent selbst: seine Abschluss-Antwort.
+Deliberately **no** automatic LLM distillation at the end of a session: it would
+silently burn quota on every session — exactly problem ①, which Vantage exists to
+fight — and a wrongly distilled entry poisons every future session, because
+memory is injected into the context. The best summary without an LLM comes from
+the agent itself anyway: its final reply.
 
-## Wie Vantage den Agent findet
+## How Vantage finds the agent
 
-Vantage bringt keinen eigenen Agent und keinen API-Key mit — es startet *deinen* installierten Claude Code, der sich mit seinem
-eigenen Login (Abo oder `ANTHROPIC_API_KEY`) anmeldet; Vantage reicht das nur
-durch. Gesucht wird `claude` auf dem PATH. Unter Windows installiert npm Agents als
-`claude.cmd`-Hilfsdatei, die Node nicht ohne Shell starten kann; Vantage liest aus
-ihr, was sie aufruft (die native `claude.exe` aktueller Versionen oder ein
-JS-Skript), und startet das direkt — ohne Shell, damit Prompt und Memory-Text nicht
-von cmd.exe interpretiert werden. Liegt der Agent woanders:
+Vantage brings no agent and no API key of its own — it starts *your* installed
+Claude Code, which signs in with its own login (subscription or
+`ANTHROPIC_API_KEY`); Vantage only passes that through. It looks for `claude` on
+the PATH. On Windows, npm installs agents as a `claude.cmd` helper that Node
+cannot start without a shell; Vantage reads from it what it calls (the native
+`claude.exe` of current versions, or a JS script) and starts that directly —
+without a shell, so that prompt and memory text are not interpreted by cmd.exe.
+If the agent lives elsewhere:
 
 ```powershell
-$env:VANTAGE_AGENT_PATH = "C:\pfad\zu\claude.exe"
+$env:VANTAGE_AGENT_PATH = "C:\path\to\claude.exe"
 vantage run claude
 ```
 
-## Architektur
+`vantage doctor` checks all of this once: Node.js, Claude Code, the approval
+hook (run exactly as Claude Code starts it), git, the settings folder, the rules
+file and the age of the price list.
 
-`vantage demo` fährt die ganze Orchestrierung vor: Env-Injektion → Agent-Spawn
-→ Proxy → Live-Meter → Event-Log. Läuft dank Nodes Type-Stripping ohne
-Build-Schritt; ein `dist/`-Build (`npm run build`) ist der Distributionspfad.
+## Architecture
 
-**Derzeit nur Claude Code — erweiterbar.** Hinter dem Proxy sitzt eine
-Provider-Schicht: ein Provider sagt nur, welche Pfade einen Turn tragen und wie
-sein Streaming-/JSON-Format zu parsen ist. Alles darüber (Meter, Event-Log,
-Replay, Policy, Quota) arbeitet auf einer normalisierten Form. Aktiv ist nur
-`anthropic` (`/v1/messages`, SSE `message_start`/`message_delta`), gegen echten
-`api.anthropic.com`-Traffic verifiziert. Adapter für Codex CLI und Aider gab es
-bereits; sie konnten aber nur messen, waren nie mit den echten Tools getestet und
-wurden deshalb entfernt statt halbfertig ausgeliefert (siehe git-Historie). Ein
-weiterer Agent ist additiv — kein Eingriff in den Kern.
+`vantage demo` runs the whole chain: environment injection → agent spawn →
+proxy → live meter → event log. Thanks to Node's type stripping it runs without
+a build step; a `dist/` build (`npm run build`) is what gets distributed.
 
-### Struktur
+**Claude Code only for now — extensible.** Behind the proxy sits a provider
+layer: a provider only says which paths carry a turn and how to parse its
+streaming/JSON format. Everything above it (meter, event log, replay, policy,
+quota) works on a normalized form. Only `anthropic` is active (`/v1/messages`,
+SSE `message_start`/`message_delta`), verified against real
+`api.anthropic.com` traffic. Adapters for Codex CLI and Aider existed; but they
+could only measure, were never tested against the real tools, and were removed
+rather than shipped half-done (see the git history). Another agent is an
+addition — no change to the core.
 
+### Layout
 
-| Pfad | Rolle |
-|------|-------|
-| `src/proxy.ts` | Transparenter Streaming-Reverse-Proxy (Schicht B) |
-| `src/usage.ts` | SSE-Usage-Extraktor (Tokens aus dem Stream) |
-| `src/meter.ts` | Aggregierte Totals + Rate + Statuszeile |
-| `src/ratelimit.ts` | Rate-Limit-Header → Limit-Prognose (unified + klassisch) |
-| `src/upstream.ts` | Egress-Connector (`HTTPS_PROXY`/`NO_PROXY`, CONNECT-Tunnel) |
-| `src/events.ts` | Append-only Event-Log (JSONL) |
-| `src/git.ts` | Git-Session-Isolation (Worktree/Branch, aggregierter Diff) |
-| `src/replay.ts` | Session-Replay: Event-Log → Timeline + Session-Liste |
-| `src/watch.ts` | Live-Ansicht fürs zweite Terminal (folgt dem Event-Log) |
-| `src/turn.ts` | Turn-Inhalt (Prompt/Antwort/Tools) + Redaction |
-| `src/memory.ts` | Projektgedächtnis (`.vantage/memory/`, Kompilierung/Injektion) |
-| `src/harvest.ts` | Assistierter Harvest: Session-Material → Memory-Vorschlag |
-| `src/policy.ts` | Aktionstyp-Klassifizierung + Policy-Stufen (②) |
-| `src/hook.ts` | PreToolUse-Enforcement (ask/deny) über den Agent-Hook |
-| `src/budget.ts` | Budget-Wächter (`--max-cost` / `--max-quota`) |
-| `src/rules.ts` | Regeln für bestimmte Dateien und Befehle (`.vantage/policy.json`) |
-| `src/secrets.ts` | Erkennung versehentlich gesendeter Geheimnisse, mit Herkunft |
-| `src/home.ts` | `~/.vantage`: Session-Index, letzte Session, läuft eine Session noch? |
-| `src/stats.ts`, `src/search.ts` | `vantage stats` und `vantage search` über alle Sessions |
-| `src/doctor.ts` | `vantage doctor`: Prüfung der Einrichtung |
-| `src/terminal.ts` | Hält Ausgaben zurück, solange Claude Codes Chat-Oberfläche offen ist |
-| `src/outbox.ts` | Postfach für Warnungen, die der Stop-Hook im Chat von Claude Code anzeigt |
-| `src/resolve.ts` | Findet die ausführbare Datei des Agents (auch npm-`.cmd`-Shims unter Windows) |
-| `src/pricing.ts`, `src/pricing-source.ts`, `src/pricing-snapshot.ts` | Preise: Lookup, Parser der offiziellen Liste, generierter Stand |
-| `src/providers/` | Provider-Schicht (derzeit nur Anthropic) hinter einem Interface |
-| `src/agents/` | Agent-Adapter (derzeit nur Claude Code) |
-| `src/cli.ts` | Einstieg: Hilfe und Verteilung auf die Befehle |
-| `src/commands/` | Ein Modul je Befehl (`run`, `watch`, `sessions`, `pricing`, …) und die gemeinsame Terminal-Ausgabe |
-| `src/session-meta.ts` | Metadaten einer Session (Isolation, Working-Tree-Snapshots) |
-| `src/prune.ts` | `vantage sessions prune`: was gelöscht wird, was bleibt |
-| `spike/` | Ursprünglicher Wegwerf-Durchstich, der die Kernannahme bewies |
+| Path | Role |
+|------|------|
+| `src/proxy.ts` | Transparent streaming reverse proxy (layer B) |
+| `src/usage.ts` | SSE usage extractor (tokens from the stream) |
+| `src/meter.ts` | Aggregated totals, rate and status line |
+| `src/ratelimit.ts` | Rate-limit headers → limit forecast (unified and classic) |
+| `src/upstream.ts` | Egress connector (`HTTPS_PROXY`/`NO_PROXY`, CONNECT tunnel) |
+| `src/events.ts` | Append-only event log (JSONL) |
+| `src/git.ts` | Git session isolation (worktree/branch, aggregated diff) and working-tree snapshots |
+| `src/replay.ts` | Session replay: event log → timeline, and the session list |
+| `src/watch.ts` | Live view for the second terminal (follows the event log) |
+| `src/turn.ts` | Turn content (prompt/reply/tools) and redaction |
+| `src/memory.ts` | Project memory (`.vantage/memory/`, compiling and injecting it) |
+| `src/harvest.ts` | Assisted harvest: session material → memory suggestion |
+| `src/policy.ts` | Action-type classification and policy levels (②) |
+| `src/hook.ts` | PreToolUse enforcement (ask/deny) through the agent's hook |
+| `src/budget.ts` | Budget guard (`--max-cost` / `--max-quota`) |
+| `src/rules.ts` | Rules for specific files and commands (`.vantage/policy.json`) |
+| `src/secrets.ts` | Detection of secrets sent to the API, with their source |
+| `src/home.ts` | `~/.vantage`: session index, last session, is a session still running? |
+| `src/stats.ts`, `src/search.ts` | `vantage stats` and `vantage search` across all sessions |
+| `src/doctor.ts` | `vantage doctor`: checks the setup |
+| `src/banner.ts` | The logo shown by `vantage`, `--help` and `doctor` |
+| `src/terminal.ts` | Holds output back while Claude Code's chat UI is open |
+| `src/outbox.ts` | Outbox for alerts that the Stop hook shows in Claude Code's chat |
+| `src/resolve.ts` | Finds the agent's executable (including npm `.cmd` shims on Windows) |
+| `src/pricing.ts`, `src/pricing-source.ts`, `src/pricing-snapshot.ts` | Prices: lookup, parser of the official list, generated snapshot |
+| `src/providers/` | Provider layer (Anthropic only for now) behind an interface |
+| `src/agents/` | Agent adapters (Claude Code only for now) |
+| `src/cli.ts` | Entry point: help and dispatch to the commands |
+| `src/commands/` | One module per command (`run`, `watch`, `sessions`, `pricing`, …) and the shared terminal output |
+| `src/session-meta.ts` | A session's metadata (isolation, working-tree snapshots) |
+| `src/prune.ts` | `vantage sessions prune`: what is deleted, what stays |
+| `spike/` | The original throwaway prototype that proved the core assumption |

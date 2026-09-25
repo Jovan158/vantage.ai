@@ -138,7 +138,7 @@ async function main() {
     console.log(`\n${GREEN}✔ Spike passed — the proxy streams transparently AND extracts usage.${RESET}\n`);
     process.exit(0);
   } else {
-    console.log(`\n${RED}�’✘ Spike failed: ${failures} check(s) failed.${RESET}\n`);
+    console.log(`\n${RED}✘ Spike failed: ${failures} check(s) failed.${RESET}\n`);
     process.exit(1);
   }
 }

@@ -1,58 +1,59 @@
-# Spike: transparenter Streaming-Proxy + Usage-Extraktion
+# Spike: transparent streaming proxy + usage extraction
 
-> **Wegwerf-Spike, kein Produktionscode.** Zweck: die riskanteste Annahme des
-> Vantage-MVP isoliert beweisen, bevor wir darauf aufbauen. Bewusst
-> abhängigkeitsfrei (reines Node-ESM, kein Build) und mit Mock-Upstream, damit er
-> ohne API-Key und ohne Netzwerk-Egress reproduzierbar läuft. Die echte
-> Implementierung wird TypeScript (siehe `docs/CONCEPT.md` §3).
+> **Throwaway spike, not production code.** Purpose: prove the riskiest assumption
+> of the Vantage MVP in isolation before building on it. Deliberately free of
+> dependencies (plain Node ESM, no build) and with a mock upstream, so it runs
+> reproducibly without an API key and without network egress. The real
+> implementation is TypeScript (see `docs/CONCEPT.md` §3).
 
-## Die geprüfte Annahme
+## The assumption tested
 
-> Kann ein lokaler Reverse-Proxy die Anthropic-SSE **byte-genau** an den Agent
-> durchleiten **und gleichzeitig** die `usage`-Tokens auslesen, ohne den Stream zu
-> stören?
+> Can a local reverse proxy pass Anthropic's SSE through to the agent
+> **byte for byte** and **at the same time** read the `usage` tokens, without
+> disturbing the stream?
 
-Das ist die tragende Säule von „Schicht B" (LLM-Proxy) aus dem Konzept — sie
-speist Kosten (①), Event-Log/Replay (③) und später das Netzwerk-Gate (②).
+That is the load-bearing pillar of "layer B" (LLM proxy) from the concept — it
+feeds cost (①), the event log and replay (③) and later the network gate (②).
 
-## Ausführen
+## Running it
 
 ```bash
 node spike/proxy-passthrough/run-spike.mjs
 ```
 
-Kette: `client → vantage proxy → mock anthropic (SSE)`. Der Runner assertet:
+Chain: `client → vantage proxy → mock anthropic (SSE)`. The runner asserts:
 
-1. **Transparenz** — die Bytes beim Client sind **identisch** zu dem, was der
-   Upstream gesendet hat (der Proxy ist unsichtbar).
-2. **Usage** — Input-/Output-/Cache-Tokens werden korrekt aus den SSE-Frames
-   extrahiert (`message_start` + `message_delta`).
-3. **Kosten** — Schätzung aus der Preis-Tabelle.
-4. **Event-Log** — ein `usage`-Event wird nach `events.jsonl` geschrieben.
+1. **Transparency** — the bytes at the client are **identical** to what the
+   upstream sent (the proxy is invisible).
+2. **Usage** — input, output and cache tokens are extracted correctly from the
+   SSE frames (`message_start` + `message_delta`).
+3. **Cost** — an estimate from the price table.
+4. **Event log** — a `usage` event is written to `events.jsonl`.
 
-Ergebnis: **9/9 Checks grün**, Time-to-first-byte durch den Proxy ~11 ms (kein
-Puffern → Stream bleibt live).
+Result: **9/9 checks green**, time to first byte through the proxy ~11 ms (no
+buffering → the stream stays live).
 
-## Dateien
+## Files
 
-| Datei | Rolle |
+| File | Role |
 |-------|-------|
-| `proxy.mjs` | Transparenter Streaming-Reverse-Proxy; forwardet Bytes, tee't Kopie in den Extractor |
-| `usage.mjs` | SSE-Parser: zieht Token-Zahlen aus den Frames, ohne den Stream zu verändern |
-| `pricing.mjs` | Platzhalter-Preistabelle + Kostenrechnung (real: updatebare Config) |
-| `mock-anthropic.mjs` | Emuliert `POST /v1/messages` (Streaming) mit realistischer SSE-Sequenz |
-| `run-spike.mjs` | Startet Mock+Proxy, schickt eine Anfrage durch, assertet 1–4 |
+| `proxy.mjs` | Transparent streaming reverse proxy; forwards bytes, tees a copy into the extractor |
+| `usage.mjs` | SSE parser: pulls token counts from the frames without changing the stream |
+| `pricing.mjs` | Placeholder price table and cost calculation (real: an updatable config) |
+| `mock-anthropic.mjs` | Emulates `POST /v1/messages` (streaming) with a realistic SSE sequence |
+| `run-spike.mjs` | Starts mock and proxy, sends one request through, asserts 1–4 |
 
-## Bewusst noch NICHT geprüft (nächste Unbekannte)
+## Deliberately NOT tested yet (the next unknowns)
 
-- **Echter Endpunkt** `api.anthropic.com` durch den Umgebungs-HTTPS-Proxy
-  (undici `ProxyAgent`/CA-Trust) statt Mock.
-- **Echter Claude-Code-Prozess** im PTY mit umgebogenem `ANTHROPIC_BASE_URL` —
-  akzeptiert die CLI die Base-URL und läuft interaktiv unverändert?
-- **Abo-Auth** (OAuth statt API-Key): Tokens zählbar, aber €-Kosten nicht exakt →
-  Anzeige muss zwischen „Tokens exakt" und „€ geschätzt" trennen.
-- **Rate-Limit-Header** (`anthropic-ratelimit-*`) für echte statt geschätzte
-  Limit-Prognose.
+- **The real endpoint** `api.anthropic.com` through the environment's HTTPS proxy
+  (undici `ProxyAgent`/CA trust) instead of the mock.
+- **A real Claude Code process** in a PTY with a redirected `ANTHROPIC_BASE_URL` —
+  does the CLI accept the base URL and run interactively unchanged?
+- **Subscription auth** (OAuth instead of an API key): tokens can be counted, but
+  cost is not exact → the display must separate "tokens exact" from "cost
+  estimated".
+- **Rate-limit headers** (`anthropic-ratelimit-*`) for a real instead of an
+  estimated limit forecast.
 
-Diese gehören in den nächsten Schritt (`vantage run claude` gegen den echten
-Endpunkt), nicht mehr in diesen Spike.
+Those belong in the next step (`vantage run claude` against the real endpoint),
+not in this spike.

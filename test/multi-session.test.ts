@@ -144,15 +144,15 @@ test("a followed log parses only what was appended, holds back a half-written li
   const tail = new EventTail(file);
   assert.deepEqual(tail.read(), [], "no file yet");
   const a = JSON.stringify({ ts: T(1), type: "request", model: "m" });
-  const b = JSON.stringify({ ts: T(2), type: "decision", tool: "Bash", decision: "ask", reason: "Größe" });
+  const b = JSON.stringify({ ts: T(2), type: "decision", tool: "Bash", decision: "ask", reason: "café au lait" });
   const bytes = Buffer.from(b + "\n");
-  const cut = bytes.indexOf(Buffer.from("ö")) + 1; // inside the two bytes of "ö"
+  const cut = bytes.indexOf(Buffer.from("é")) + 1; // inside the two bytes of "é"
   fs.writeFileSync(file, Buffer.concat([Buffer.from(a + "\n"), bytes.subarray(0, cut)]));
   assert.equal(tail.read().length, 1);
   fs.appendFileSync(file, bytes.subarray(cut));
   const both = tail.read();
   assert.deepEqual(both.map((e) => e.type), ["request", "decision"]);
-  assert.equal((both[1] as { reason?: string }).reason, "Größe", "multi-byte text split across reads");
+  assert.equal((both[1] as { reason?: string }).reason, "café au lait", "multi-byte text split across reads");
   assert.equal(tail.read(), both, "nothing new: the same list");
   fs.writeFileSync(file, b + "\n");
   assert.deepEqual(tail.read().map((e) => e.type), ["decision"], "a shorter log is read from the start");
