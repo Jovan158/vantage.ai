@@ -4,8 +4,6 @@
 // counts out of the SSE frames WITHOUT altering or delaying the stream.
 // Anthropic reports usage in `message_start` (input + partial output) and
 // `message_delta` (final cumulative output).
-//
-// Proven end-to-end in spike/proxy-passthrough; this is the typed core.
 
 export interface TokenUsage {
   model: string | null;

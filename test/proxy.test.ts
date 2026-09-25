@@ -1,4 +1,3 @@
-// Ports the spike's assertions into the standard test runner (node:test).
 // Proves the proxy streams transparently AND extracts usage from real SSE.
 //
 // Run:  npm test   (node --experimental-strip-types --test test/*.test.ts)
