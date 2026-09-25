@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { EventLog, sessionDir, type VantageEvent } from "./events.ts";
 import { extractRateLimit, formatRateLimit } from "./ratelimit.ts";
+import { agentShort } from "./agents/index.ts";
 import { summarizeActions, formatActionSummary } from "./policy.ts";
 import { summarize, relativeTarget, shortenPaths } from "./replay.ts";
 import { formatCost } from "./pricing.ts";
@@ -95,9 +96,16 @@ interface Snapshot {
   snap: NonNullable<ReturnType<typeof extractRateLimit>>;
 }
 
-// One sentence on what Claude is doing right now, for a running session.
+// The agent a session ran, from its first event.
+function sessionAgent(events: VantageEvent[]): string {
+  const start = events.find((e) => e.type === "session_start");
+  return agentShort(start?.type === "session_start" ? start.agent : undefined);
+}
+
+// One sentence on what the agent is doing right now, for a running session.
 export function statusSentence(events: VantageEvent[], now: number, projectPath: string | undefined, c: Colors, width: number): string {
   const at = (e: { ts: string }): number => Date.parse(e.ts);
+  const who = sessionAgent(events);
   const turns = events.filter((e): e is Usage => e.type === "usage" && !e.background);
   const lastTurn = turns.at(-1);
   const lastRequest = events.filter((e) => e.type === "request").at(-1);
@@ -112,12 +120,19 @@ export function statusSentence(events: VantageEvent[], now: number, projectPath:
     return `${c.yellow}${c.bold}Approval requested ${span(now - at(lastDecision))} ago:${c.reset} ${fit(`${lastDecision.tool} ${relativeTarget(lastDecision.target ?? "", projectPath)}`, width - 40)}`;
   }
   if (lastRequest && (!lastTurn || at(lastRequest) > at(lastTurn))) {
-    return `${c.cyan}${c.bold}Claude is thinking…${c.reset} ${c.dim}${span(now - at(lastRequest))}${c.reset}`;
+    return `${c.cyan}${c.bold}${who} is thinking…${c.reset} ${c.dim}${span(now - at(lastRequest))}${c.reset}`;
   }
-  if (lastTurn?.stopReason === "tool_use") {
-    return `${c.cyan}${c.bold}Claude is working:${c.reset} ${fit(describeCalls(lastTurn, projectPath), width - 20)}`;
+  // A turn that called tools is followed by the next one once they ran.
+  // Anthropic and Chat Completions say so in the stop reason; for the rest
+  // the calls themselves tell.
+  const calledTools =
+    lastTurn?.stopReason === "tool_use" ||
+    lastTurn?.stopReason === "tool_calls" ||
+    (!!lastTurn?.stopReason && !["end_turn", "stop", "stop_sequence", "max_tokens"].includes(lastTurn.stopReason) && (lastTurn.tools?.length ?? 0) > 0);
+  if (lastTurn && calledTools) {
+    return `${c.cyan}${c.bold}${who} is working:${c.reset} ${fit(describeCalls(lastTurn, projectPath), width - 20)}`;
   }
-  if (lastTurn) return `${c.green}${c.bold}Claude replied.${c.reset} ${c.dim}${span(now - at(lastTurn))} ago${c.reset}`;
+  if (lastTurn) return `${c.green}${c.bold}${who} replied.${c.reset} ${c.dim}${span(now - at(lastTurn))} ago${c.reset}`;
   return `${c.dim}Waiting for the first message…${c.reset}`;
 }
 
@@ -332,7 +347,7 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
   }
 
   lines.push("");
-  lines.push(`${c.dim}${end ? "session finished" : "Ctrl-C stops watching — Claude keeps running"}${c.reset}`);
+  lines.push(`${c.dim}${end ? "session finished" : `Ctrl-C stops watching — ${sessionAgent(events)} keeps running`}${c.reset}`);
   return lines.join("\n");
 }
 
@@ -398,7 +413,7 @@ export function renderOverview(items: OverviewItem[], opts: { nowMs?: number; co
   lines.push(`${c.dim}One session in detail:${c.reset}`);
   for (const item of sorted) lines.push(`  ${c.dim}vantage watch ${item.ref.sessionId}   ${name(item)}${c.reset}`);
   lines.push("");
-  lines.push(`${c.dim}Ctrl-C stops watching — Claude keeps running${c.reset}`);
+  lines.push(`${c.dim}Ctrl-C stops watching — the agents keep running${c.reset}`);
   return lines.join("\n");
 }
 

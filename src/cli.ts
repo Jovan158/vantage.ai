@@ -20,6 +20,7 @@ import { cmdPolicy } from "./commands/policy.ts";
 import { cmdPricing } from "./commands/pricing.ts";
 import { cmdMemory } from "./commands/memory.ts";
 import { cmdDemo } from "./commands/demo.ts";
+import { cmdSetup } from "./commands/setup.ts";
 
 const ENTRY = fileURLToPath(import.meta.url);
 
@@ -43,6 +44,7 @@ function printHelp(withLogo = true): void {
       `  vantage memory <init|show|add <category> <text>>\n` +
       `  vantage policy [init]\n` +
       `  vantage pricing [update|check]\n` +
+      `  vantage setup <agent>\n` +
       `  vantage doctor\n` +
       `  vantage demo\n` +
       `  vantage --help\n\n` +
@@ -75,7 +77,8 @@ const COMMANDS: Record<string, (argv: string[]) => Promise<number>> = {
   memory: cmdMemory,
   policy: cmdPolicy,
   pricing: cmdPricing,
-  hook: () => cmdHook(),
+  hook: (argv) => cmdHook(argv),
+  setup: (argv) => cmdSetup(argv, ENTRY),
   doctor: () => cmdDoctor(ENTRY),
   demo: () => cmdDemo(),
 };

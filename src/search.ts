@@ -13,6 +13,7 @@ import type { VantageEvent } from "./events.ts";
 import type { SessionRef } from "./home.ts";
 import { shortenPaths } from "./replay.ts";
 import { plain } from "./sanitize.ts";
+import { agentShort } from "./agents/index.ts";
 
 export type HitKind = "message" | "reply" | "file" | "command" | "call" | "changed" | "blocked" | "asked" | "secret";
 
@@ -60,6 +61,7 @@ export function searchSession(ref: SessionRef, events: VantageEvent[], query: st
   const start = events.find((e) => e.type === "session_start");
   if (!start || start.type !== "session_start") return null;
   const project = start.project ?? ref.cwd;
+  const agent = agentShort(start.agent).toLowerCase();
   const needle = query.toLowerCase();
   const hits: Hit[] = [];
   const add = (h: Hit): void => {
@@ -69,7 +71,7 @@ export function searchSession(ref: SessionRef, events: VantageEvent[], query: st
     hits.push({ ...h, text: shortenPaths(h.text, project) });
   };
 
-  // Claude's tool loop resends your last message with every model call;
+  // The agent's tool loop resends your last message with every model call;
   // it is one message, so it is one hit.
   let lastPrompt: string | undefined;
   for (const e of events) {
@@ -77,7 +79,7 @@ export function searchSession(ref: SessionRef, events: VantageEvent[], query: st
     if (e.type === "usage" && !e.background) {
       if (e.prompt && e.prompt !== lastPrompt) add({ ts, kind: "message", label: "you", text: e.prompt });
       lastPrompt = e.prompt ?? lastPrompt;
-      if (e.text) add({ ts, kind: "reply", label: "claude", text: e.text });
+      if (e.text) add({ ts, kind: "reply", label: agent, text: e.text });
       const calls: Array<{ tool: string; target?: string }> = e.calls ?? (e.tools ?? []).map((tool) => ({ tool }));
       for (const k of calls) add(callHit(ts, k.tool, k.target));
     } else if (e.type === "decision") {

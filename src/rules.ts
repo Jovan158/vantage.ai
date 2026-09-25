@@ -33,6 +33,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { PolicyLevel } from "./policy.ts";
+import { commandText, patchFiles } from "./turn.ts";
 
 export interface Rule {
   kind: "file" | "command";
@@ -134,7 +135,8 @@ function commandWords(command: string): string[] {
     .filter((w) => w && !w.startsWith("-"));
 }
 
-const FILE_KEYS = ["file_path", "notebook_path", "path"];
+// Where agents name the file a call acts on (see TARGET_KEYS in turn.ts).
+const FILE_KEYS = ["file_path", "filePath", "notebook_path", "absolute_path", "target_file", "path"];
 
 export interface RuleMatch {
   rule: Rule;
@@ -160,7 +162,10 @@ export function matchRules(
 ): RuleMatch | null {
   if (!input || rules.length === 0) return null;
   const files = FILE_KEYS.map((k) => input[k]).filter((v): v is string => typeof v === "string" && v.length > 0);
-  const command = typeof input.command === "string" ? input.command : null;
+  // An apply_patch call names its files in the patch; its text is no command.
+  const patched = patchFiles(input);
+  files.push(...patched);
+  const command = patched.length ? null : (commandText(input.command) ?? commandText(input.cmd) ?? null);
   if (command) files.push(...commandWords(command));
 
   const fileRules = rules.filter((r) => r.kind === "file");

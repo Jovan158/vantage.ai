@@ -17,19 +17,66 @@ export interface ToolCall {
 
 const MAX_TARGET = 80;
 
+// Where agents put what a call acts on. Claude Code: file_path, command, url.
+// Others spell it their own way: filePath (OpenCode), absolute_path (Gemini
+// CLI), cmd (Codex), target_file (Cursor).
+const TARGET_KEYS = [
+  "file_path",
+  "filePath",
+  "notebook_path",
+  "absolute_path",
+  "target_file",
+  "path",
+  "command",
+  "cmd",
+  "url",
+  "query",
+  "pattern",
+  "description",
+  "skill",
+];
+
+// A shell command as one line. Some agents pass it as an argv array, often
+// wrapped in the shell itself (["bash", "-lc", "npm test"]); the part after
+// -c/-lc is what runs.
+export function commandText(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value) || !value.every((v) => typeof v === "string")) return undefined;
+  const argv = value as string[];
+  const flag = argv.findIndex((a) => /^-[a-z]*c$/.test(a));
+  if (flag >= 1 && flag === argv.length - 2 && /(?:^|[\\/])(?:ba|z|da|fi)?sh(?:\.exe)?$|powershell|pwsh/i.test(argv[0]!)) return argv[flag + 1];
+  return argv.join(" ");
+}
+
+// The files an apply_patch call touches, from its "*** Add/Update/Delete
+// File: path" headers (Codex, and Copilot's apply_patch tool). The patch text
+// is under "input" or "command" (Codex's hook) or "patch".
+export function patchFiles(input: Record<string, unknown>): string[] {
+  const text = [input.input, input.patch, input.command].find((v): v is string => typeof v === "string" && v.includes("*** Begin Patch"));
+  if (!text) return [];
+  const files: string[] = [];
+  for (const m of text.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$/gm)) {
+    const f = (m[1] ?? m[2] ?? "").trim();
+    if (f && !files.includes(f)) files.push(f);
+  }
+  return files;
+}
+
 // The one detail that says what a tool call does: the file for file tools,
 // the command for a shell, the URL for a fetch. Read from the full input
 // before any preview truncation, and redacted like every other preview.
 export function toolTarget(input: unknown): string | undefined {
   if (!input || typeof input !== "object") return undefined;
   const i = input as Record<string, unknown>;
-  for (const key of ["file_path", "notebook_path", "path", "command", "url", "query", "pattern", "description", "skill"]) {
-    const v = i[key];
+  const patched = patchFiles(i);
+  if (patched.length) return patched.length === 1 ? patched[0] : `${patched[0]} (+${patched.length - 1} more)`;
+  for (const key of TARGET_KEYS) {
+    const v = key === "command" || key === "cmd" ? commandText(i[key]) : i[key];
     if (typeof v === "string" && v.trim()) {
       const one = redact(v).replace(/\s+/g, " ").trim();
       if (one.length <= MAX_TARGET) return one;
       // Paths keep their end (the file name), everything else its start.
-      return key.endsWith("path") ? "…" + one.slice(-(MAX_TARGET - 1)) : one.slice(0, MAX_TARGET - 1) + "…";
+      return /path|file/i.test(key) ? "…" + one.slice(-(MAX_TARGET - 1)) : one.slice(0, MAX_TARGET - 1) + "…";
     }
   }
   return undefined;
@@ -273,17 +320,26 @@ function promptFrom(msgs: Array<{ role?: string; content?: unknown }>): string |
 }
 
 // Claude Code prepends its own <system-reminder> blocks (environment, memory,
-// user info) to the user's message. They are not what the user typed, and at
-// the front of a truncated preview they hide it completely — so drop them. An
-// unclosed block (body capture cut off) is dropped to the end.
+// user info) to the user's message; Codex sends its environment and
+// AGENTS.md as user messages in tags of their own. They are not what the user
+// typed, and at the front of a truncated preview they hide it completely — so
+// drop them. An unclosed block (body capture cut off) is dropped to the end.
+const INJECTED_TAGS = ["system-reminder", "environment_context", "user_instructions", "INSTRUCTIONS", "session_context", "current_datetime"];
+
 export function stripInjectedContext(text: string): string {
-  return text
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, " ")
-    .replace(/<system-reminder>[\s\S]*$/, " ")
-    .trim();
+  let out = text;
+  for (const tag of INJECTED_TAGS) {
+    out = out.replace(new RegExp(`<${tag}>[\\s\\S]*?</${tag}>`, "g"), " ").replace(new RegExp(`<${tag}>[\\s\\S]*$`), " ");
+  }
+  return out.replace(/^# AGENTS\.md instructions for \S+\s*$/m, " ").trim();
 }
 
-function contentToText(content: unknown): string {
+// The last message the user typed, from a list of chat messages.
+export function lastUserText(msgs: Array<{ role?: string; content?: unknown }>): string | null {
+  return promptFrom(msgs);
+}
+
+export function contentToText(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content

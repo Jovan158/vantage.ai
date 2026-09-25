@@ -22,7 +22,8 @@ export type PolicyLevel = "allow" | "warn" | "ask" | "deny";
 
 export type Policy = Record<ActionType, PolicyLevel>;
 
-// Known Claude Code tool names → action type.
+// Known tool names → action type: Claude Code's (which Copilot CLI reports
+// too), then the ones the name patterns below would get wrong.
 const TOOL_TYPES: Record<string, ActionType> = {
   Read: "read",
   NotebookRead: "read",
@@ -39,15 +40,20 @@ const TOOL_TYPES: Record<string, ActionType> = {
   KillShell: "shell",
   WebFetch: "network",
   WebSearch: "network",
+  ls: "read", // pi
+  codesearch: "network", // OpenCode: searches the web for code
 };
 
 export function classifyTool(name: string): ActionType {
   const known = TOOL_TYPES[name];
   if (known) return known;
   const n = name.toLowerCase();
+  // Hermes presents its own tools to Claude models as mcp__terminal, … —
+  // one segment, where a real MCP tool is mcp__<server>__<tool>.
+  if (n.startsWith("mcp__") && !n.slice(5).includes("__")) return classifyTool(name.slice(5));
   if (n.startsWith("mcp__")) return "network"; // MCP tools reach external services
-  if (/(write|edit|create|delete|remove|move|rename|patch|apply)/.test(n)) return "write";
-  if (/(fetch|http|url|web|curl|request|download|upload)/.test(n)) return "network";
+  if (/(write|edit|create|delete|remove|move|rename|patch|apply|replace|insert|save)/.test(n)) return "write";
+  if (/(fetch|http|url|web|curl|request|download|upload|browser)/.test(n)) return "network";
   if (/(bash|shell|exec|command|terminal|process)/.test(n)) return "shell";
   if (/(read|list|glob|grep|search|find|view|cat|show)/.test(n)) return "read";
   return "other";

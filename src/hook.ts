@@ -16,8 +16,6 @@
 import { classifyTool } from "./policy.ts";
 import type { ActionType, Policy } from "./policy.ts";
 import type { BudgetState } from "./budget.ts";
-import type { DecisionEvent } from "./events.ts";
-import { toolTarget } from "./turn.ts";
 import { matchRules, type Rule } from "./rules.ts";
 
 export interface HookInput {
@@ -124,35 +122,6 @@ export function runHook(rawInput: string, policy: Policy, budget: BudgetState | 
   return output ? JSON.stringify(output) : "";
 }
 
-// Adds waiting alerts to the hook's answer as a systemMessage, which Claude
-// Code shows in the chat. With no decision, the answer is the message alone.
-export function withAlerts(output: string, message: string): string {
-  if (!message) return output;
-  const obj = output ? (JSON.parse(output) as Record<string, unknown>) : {};
-  obj.systemMessage = message;
-  return JSON.stringify(obj);
-}
-
-// The event-log record of a decision the hook made, or null when it made
-// none. "allow" never happens (see decide), so every record is a stop or a
-// question the user should see in watch and replay.
-export function decisionRecord(rawInput: string, output: string, now = new Date()): DecisionEvent | null {
-  if (!output) return null;
-  const input = parseHookInput(rawInput);
-  const out = JSON.parse(output) as HookOutput;
-  const d = out.hookSpecificOutput.permissionDecision;
-  if (!input?.tool_name || (d !== "ask" && d !== "deny")) return null;
-  const target = toolTarget(input.tool_input);
-  return {
-    ts: now.toISOString(),
-    type: "decision",
-    tool: input.tool_name,
-    ...(target ? { target } : {}),
-    decision: d,
-    reason: out.hookSpecificOutput.permissionDecisionReason,
-  };
-}
-
 // How the agent should invoke this CLI's `hook` subcommand: node plus the entry
 // script, in EXEC form (command + args, no shell). Exec form sidesteps quoting
 // entirely — on Windows the hook would otherwise run under Git Bash or
@@ -164,10 +133,31 @@ export interface HookInvocation {
   args: string[];
 }
 
-export function hookInvocation(execPath: string, entry: string): HookInvocation {
+// `extra` names the agent and the session's hook settings (see
+// src/agents/hooks.ts); Claude Code's hook reads them from the environment.
+export function hookInvocation(execPath: string, entry: string, extra: string[] = []): HookInvocation {
   // A dev checkout runs the TypeScript source, which needs type stripping.
   const strip = entry.endsWith(".ts") ? ["--experimental-strip-types"] : [];
-  return { command: execPath, args: [...strip, entry, "hook"] };
+  return { command: execPath, args: [...strip, entry, "hook", ...extra] };
+}
+
+// The same invocation as one shell command line, for agents that run hooks
+// through a shell (Codex, Gemini CLI, Cursor, Hermes, Antigravity). Every
+// part is quoted for the shell the agent uses on this platform.
+export function hookCommandLine(inv: HookInvocation, platform = process.platform): string {
+  // A quoted program path is a string, not a command, to PowerShell; node
+  // under "C:\Program Files" is started by name then (npm put it on PATH).
+  const command = platform === "win32" && shellQuote(inv.command, platform) !== inv.command ? "node" : inv.command;
+  return [command, ...inv.args].map((a) => shellQuote(a, platform)).join(" ");
+}
+
+export function shellQuote(arg: string, platform = process.platform): string {
+  if (platform === "win32") {
+    // cmd.exe and PowerShell both take a double-quoted path; a path cannot
+    // contain a double quote on Windows.
+    return /^[A-Za-z0-9_\\/:.=-]+$/.test(arg) ? arg : `"${arg}"`;
+  }
+  return /^[A-Za-z0-9_\/:.=@%+-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
 }
 
 // The settings fragment that registers the hooks. Claude Code merges

@@ -2,22 +2,30 @@
 // verbatim to the upstream provider and streams the response body back
 // chunk-by-chunk (no buffering, so SSE stays live), teeing the bytes into a
 // usage extractor. On stream end it emits a typed UsageEvent.
+//
+// One proxy serves every provider an agent talks to. Each route is a path
+// prefix the agent is pointed at ("/openai" → https://api.openai.com/v1); the
+// default route has no prefix, which is how Claude Code is pointed at it.
+// What a request carries is told by its path (src/formats), so an agent that
+// switches models mid-session is still read right. WebSocket connections
+// (Codex streams its turns over one) pass through as bytes, read from a copy.
 
 import http from "node:http";
 import zlib from "node:zlib";
+import type net from "node:net";
 import { URL } from "node:url";
 import type { AddressInfo } from "node:net";
 import type { Transform } from "node:stream";
-import { requestInfoFrom, type RequestInfo } from "./turn.ts";
-import { scanRequest, type SecretFinding } from "./secrets.ts";
-import type { TurnContent } from "./turn.ts";
-import { getProvider } from "./providers/index.ts";
-import type { Provider, ProviderName } from "./providers/index.ts";
+import type { RequestInfo, TurnContent } from "./turn.ts";
+import { scanParts, type SecretFinding } from "./secrets.ts";
+import { formatForPath, FORMATS, type Format } from "./formats/index.ts";
+import { createResponsesTurn, type ResponsesTurn } from "./formats/openai.ts";
 import { estimateCostUsd } from "./pricing.ts";
-import { upstreamTransport } from "./upstream.ts";
-import { extractRateLimit } from "./ratelimit.ts";
+import { upstreamTransport, type UpstreamTransport } from "./upstream.ts";
+import { extractRateLimit, rateLimitFromEvent } from "./ratelimit.ts";
 import type { RateLimitSnapshot } from "./ratelimit.ts";
 import type { UsageEvent } from "./events.ts";
+import { WsReader } from "./ws.ts";
 
 const DEBUG = process.env.VANTAGE_DEBUG === "1";
 
@@ -46,11 +54,47 @@ function makeDecompressor(encoding: string): Transform | null {
   }
 }
 
+// A compressed request body, decoded for observation only.
+function decodeBody(buf: Buffer, encoding: string): Buffer | null {
+  try {
+    switch (encoding) {
+      case "":
+      case "identity":
+        return buf;
+      case "gzip":
+      case "x-gzip":
+        return zlib.gunzipSync(buf);
+      case "deflate":
+        return zlib.inflateSync(buf);
+      case "br":
+        return zlib.brotliDecompressSync(buf);
+      case "zstd":
+        return typeof zlib.zstdDecompressSync === "function" ? zlib.zstdDecompressSync(buf) : null;
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+export interface Route {
+  /** Path prefix the agent is pointed at, e.g. "/openai"; "" is the default route. */
+  prefix: string;
+  /**
+   * Base URL requests go to; its path comes before the request's own. A
+   * function chooses per request (Codex: ChatGPT sign-in or API key).
+   */
+  upstream: string | ((headers: http.IncomingHttpHeaders) => string);
+}
+
 export interface ProxyOptions {
-  upstream: string;
+  /** The default route's upstream (shorthand for routes: [{ prefix: "", upstream }]). */
+  upstream?: string;
+  routes?: Route[];
   port?: number;
-  /** Response format to parse; defaults to Anthropic. */
-  provider?: ProviderName;
+  /** Whose replies these are, in secret findings ("Claude's reply"). */
+  agentName?: string;
   onUsage?: (event: UsageEvent) => void;
   onRateLimit?: (snapshot: RateLimitSnapshot) => void;
   /**
@@ -77,30 +121,114 @@ export interface RunningProxy {
   close(): Promise<void>;
 }
 
+interface Target {
+  url: URL;
+  /** The upstream path with query, e.g. /v1/messages?beta=true. */
+  path: string;
+  transport: UpstreamTransport;
+}
+
+// The route a request path belongs to: the longest matching prefix.
+export function matchRoute(routes: Route[], reqPath: string): { route: Route; rest: string } | null {
+  let best: Route | null = null;
+  for (const r of routes) {
+    const p = r.prefix.replace(/\/+$/, "");
+    const hit = p === "" || reqPath === p || reqPath.startsWith(p + "/") || reqPath.startsWith(p + "?");
+    if (hit && (!best || p.length > best.prefix.replace(/\/+$/, "").length)) best = r;
+  }
+  if (!best) return null;
+  return { route: best, rest: reqPath.slice(best.prefix.replace(/\/+$/, "").length) };
+}
+
+function joinPath(base: URL, rest: string): string {
+  const basePath = base.pathname.replace(/\/+$/, "");
+  if (rest === "" || rest.startsWith("?")) return (basePath || "/") + rest;
+  return basePath + (rest.startsWith("/") ? rest : "/" + rest);
+}
+
+// A turn with nothing in it (a WebSocket warm-up, an empty retry) is noise.
+function isEmptyTurn(t: TurnContent): boolean {
+  const u = t.usage;
+  return !u.input_tokens && !u.output_tokens && !u.cache_read_input_tokens && !u.cache_creation_input_tokens && !t.text && t.tools.length === 0;
+}
+
 export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
   const log = opts.log ?? stderrLog;
+  const agentName = opts.agentName ?? "Claude";
   // Conversation parts already scanned for secrets (see secrets.ts).
   const scanned = new Set<string>();
-  const upstreamUrl = new URL(opts.upstream);
-  const transport = upstreamTransport(opts.upstream);
-  const upstreamClient = transport.client;
-  const provider: Provider = getProvider(opts.provider ?? "anthropic");
+  const routes: Route[] = opts.routes ?? (opts.upstream ? [{ prefix: "", upstream: opts.upstream }] : []);
+  const transports = new Map<string, UpstreamTransport>();
+  const transportFor = (url: URL): UpstreamTransport => {
+    let t = transports.get(url.origin);
+    if (!t) transports.set(url.origin, (t = upstreamTransport(url.origin)));
+    return t;
+  };
+  const firstUpstream = routes.map((r) => (typeof r.upstream === "string" ? r.upstream : null)).find(Boolean);
+  const via = firstUpstream ? upstreamTransport(firstUpstream).via : upstreamTransport("https://example.com").via;
+
+  const resolveTarget = (reqPath: string, headers: http.IncomingHttpHeaders): Target | null => {
+    const m = matchRoute(routes, reqPath);
+    if (!m) return null;
+    const base = typeof m.route.upstream === "function" ? m.route.upstream(headers) : m.route.upstream;
+    const url = new URL(base);
+    return { url, path: joinPath(url, m.rest), transport: transportFor(url) };
+  };
+
+  const emitTurn = (turn: TurnContent, path: string, info: RequestInfo): void => {
+    if (!opts.onUsage || isEmptyTurn(turn)) return;
+    const u = turn.usage;
+    opts.onUsage({
+      ts: new Date().toISOString(),
+      type: "usage",
+      path: path.split("?")[0]!,
+      model: u.model,
+      in: u.input_tokens,
+      out: u.output_tokens,
+      cache_read: u.cache_read_input_tokens,
+      cache_write: u.cache_creation_input_tokens,
+      cost_usd: ((c) => (c === null ? null : Number(c.toFixed(6))))(estimateCostUsd(u)),
+      ...(info.prompt ? { prompt: info.prompt } : {}),
+      ...(info.background ? { background: true } : {}),
+      ...(turn.text ? { text: turn.text } : {}),
+      ...(turn.tools.length ? { tools: turn.tools.map((t) => t.name) } : {}),
+      ...(turn.tools.length
+        ? { calls: turn.tools.map((t) => ({ tool: t.name, ...(t.target ? { target: t.target } : {}) })) }
+        : {}),
+      ...(turn.stopReason ? { stopReason: turn.stopReason } : {}),
+    });
+  };
+
+  const observeRequest = (format: Format, body: unknown): RequestInfo => {
+    const info = format.requestInfo(body);
+    if (opts.onRequest) {
+      try {
+        opts.onRequest({ ...info, secrets: scanParts(format.parts(body, agentName), scanned) });
+      } catch {
+        /* observation only; never break the request */
+      }
+    }
+    return info;
+  };
 
   const server = http.createServer((clientReq, clientRes) => {
-    const targetPath = clientReq.url ?? "/";
-    const headers = { ...clientReq.headers, host: upstreamUrl.host };
+    const target = resolveTarget(clientReq.url ?? "/", clientReq.headers);
+    if (!target) {
+      clientRes.writeHead(404);
+      clientRes.end("vantage proxy: no route for this path");
+      return;
+    }
+    const targetPath = target.path;
+    const format = formatForPath(targetPath);
+    const headers = { ...clientReq.headers, host: target.url.host };
 
-    // Tee the request body (capped) to recover the last user prompt. Requests
-    // to the Messages API are uncompressed JSON in practice. The cap is high
-    // because a long session resends its whole history every turn; a body
-    // cut off at the cap yields no prompt.
+    // Tee the request body (capped) to recover the last user prompt. The cap
+    // is high because a long session resends its whole history every turn;
+    // a body cut off at the cap yields no prompt.
     const reqChunks: Buffer[] = [];
     let reqBytes = 0;
     const captureReq =
-      clientReq.method === "POST" &&
-      provider.isObservablePath(targetPath) &&
-      String(clientReq.headers["content-type"] ?? "").includes("json") &&
-      !clientReq.headers["content-encoding"];
+      clientReq.method === "POST" && format !== null && String(clientReq.headers["content-type"] ?? "").includes("json");
     if (captureReq) {
       clientReq.on("data", (chunk: Buffer) => {
         if (reqBytes < 16 * 1024 * 1024) {
@@ -117,7 +245,8 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
       if (!parsedOnce) {
         parsedOnce = true;
         try {
-          parsed = captureReq && reqChunks.length > 0 ? JSON.parse(Buffer.concat(reqChunks).toString("utf8")) : undefined;
+          const raw = captureReq && reqChunks.length > 0 ? decodeBody(Buffer.concat(reqChunks), String(clientReq.headers["content-encoding"] ?? "").toLowerCase()) : null;
+          parsed = raw ? JSON.parse(raw.toString("utf8")) : undefined;
         } catch {
           parsed = undefined; // cut off at the capture limit
         }
@@ -125,7 +254,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
       return parsed;
     };
     let info: RequestInfo | null = null;
-    const requestInfo = (): RequestInfo => (info ??= requestInfoFrom(body()));
+    const requestInfo = (): RequestInfo => (info ??= format ? format.requestInfo(body()) : { prompt: null, background: false });
 
     let exchangeOpen = false;
     const endExchange = (): void => {
@@ -137,38 +266,33 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
       exchangeOpen = true;
       opts.onExchange?.("start");
     }
-    if (captureReq && opts.onRequest) {
+    if (captureReq && format) {
       clientReq.on("end", () => {
-        try {
-          opts.onRequest?.({ ...requestInfo(), secrets: scanRequest(body(), scanned) });
-        } catch {
-          /* observation only; never break the request */
-        }
+        info = observeRequest(format, body());
       });
     }
 
-    const upstreamReq = upstreamClient.request(
+    const upstreamReq = target.transport.client.request(
       {
-        protocol: upstreamUrl.protocol,
-        hostname: upstreamUrl.hostname,
-        port: upstreamUrl.port || (upstreamUrl.protocol === "https:" ? 443 : 80),
+        protocol: target.url.protocol,
+        hostname: target.url.hostname,
+        port: target.url.port || (target.url.protocol === "https:" ? 443 : 80),
         method: clientReq.method,
         path: targetPath,
         headers,
-        agent: transport.agent,
+        agent: target.transport.agent,
       },
       (upstreamRes) => {
         clientRes.writeHead(upstreamRes.statusCode ?? 502, upstreamRes.headers);
 
         const contentType = String(upstreamRes.headers["content-type"] ?? "");
         const encoding = String(upstreamRes.headers["content-encoding"] ?? "").toLowerCase();
-        const isStream = contentType.includes("text/event-stream");
-        const isMessages = provider.isObservablePath(targetPath);
-        const isJsonMessages = isMessages && contentType.includes("application/json");
-        const observe = isStream || isJsonMessages;
+        const isStream = format !== null && contentType.includes("text/event-stream");
+        const isJson = format !== null && contentType.includes("application/json") && (upstreamRes.statusCode ?? 0) < 400;
+        const observe = isStream || isJson;
 
         if (DEBUG) {
-          log(`upstream ${upstreamRes.statusCode} ${targetPath} · type=${contentType || "?"} · enc=${encoding || "none"}`);
+          log(`upstream ${upstreamRes.statusCode} ${target.url.host}${targetPath} · format=${format?.name ?? "-"} · type=${contentType || "?"} · enc=${encoding || "none"}`);
         }
 
         // Rate-limit headers are available immediately (no body needed).
@@ -176,7 +300,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
         if (rl) {
           if (DEBUG) log(`ratelimit headers: ${JSON.stringify(rl.raw)}`);
           opts.onRateLimit?.(rl);
-        } else if (DEBUG && isMessages) {
+        } else if (DEBUG && format) {
           log("ratelimit headers: none present on this response");
         }
 
@@ -184,8 +308,8 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
         // upstream bytes. If the response is compressed we forward raw bytes to
         // the client and feed a decompressed copy to the observer. Streaming
         // responses parse SSE incrementally; JSON responses buffer the body.
-        const sse = isStream ? provider.createTurnExtractor() : null;
-        const jsonChunks: Buffer[] | null = isJsonMessages ? [] : null;
+        const sse = isStream && format ? format.createTurnExtractor(targetPath) : null;
+        const jsonChunks: Buffer[] | null = isJson ? [] : null;
         const decompressor = observe ? makeDecompressor(encoding) : null;
 
         const observeBytes = (buf: Buffer): void => {
@@ -199,31 +323,6 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
           });
         }
 
-        const emit = (turn: TurnContent): void => {
-          if (!opts.onUsage) return;
-          const u = turn.usage;
-          const { prompt, background } = requestInfo();
-          opts.onUsage({
-            ts: new Date().toISOString(),
-            type: "usage",
-            path: targetPath,
-            model: u.model,
-            in: u.input_tokens,
-            out: u.output_tokens,
-            cache_read: u.cache_read_input_tokens,
-            cache_write: u.cache_creation_input_tokens,
-            cost_usd: ((c) => (c === null ? null : Number(c.toFixed(6))))(estimateCostUsd(u)),
-            ...(prompt ? { prompt } : {}),
-            ...(background ? { background: true } : {}),
-            ...(turn.text ? { text: turn.text } : {}),
-            ...(turn.tools.length ? { tools: turn.tools.map((t) => t.name) } : {}),
-            ...(turn.tools.length
-              ? { calls: turn.tools.map((t) => ({ tool: t.name, ...(t.target ? { target: t.target } : {}) })) }
-              : {}),
-            ...(turn.stopReason ? { stopReason: turn.stopReason } : {}),
-          });
-        };
-
         // A stream can end exactly once; guard so an error after data, or an
         // error following 'end', never emits a second usage event.
         let settled = false;
@@ -232,11 +331,13 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
           settled = true;
           try {
             if (sse) {
-              emit(sse.end());
-            } else if (jsonChunks) {
-              const turn = provider.extractTurnFromJson(Buffer.concat(jsonChunks).toString("utf8"));
-              if (turn) emit(turn);
+              emitTurn(sse.end(), targetPath, requestInfo());
+            } else if (jsonChunks && format) {
+              const turn = format.extractTurnFromJson(Buffer.concat(jsonChunks).toString("utf8"), targetPath);
+              if (turn) emitTurn(turn, targetPath, requestInfo());
             }
+          } catch {
+            /* observation only */
           } finally {
             endExchange();
           }
@@ -294,6 +395,144 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     clientReq.pipe(upstreamReq);
   });
 
+  // WebSocket: pass the handshake and then the bytes through both ways,
+  // reading a copy of each direction. Only the Responses API is read this way
+  // (Codex); any other WebSocket passes through unread.
+  // Upgraded sockets leave the server's books; they are closed with it.
+  const upgraded = new Set<net.Socket>();
+  const track = (s: net.Socket): void => {
+    upgraded.add(s);
+    s.on("close", () => upgraded.delete(s));
+  };
+
+  server.on("upgrade", (clientReq: http.IncomingMessage, clientSocket: net.Socket, clientHead: Buffer) => {
+    clientSocket.on("error", () => {});
+    track(clientSocket);
+    const target = resolveTarget(clientReq.url ?? "/", clientReq.headers);
+    if (!target) {
+      clientSocket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+      return;
+    }
+    const readable = formatForPath(target.path)?.name === "openai-responses";
+    const headers: http.OutgoingHttpHeaders = { ...clientReq.headers, host: target.url.host };
+    // No compression, so the frames can be read; the upstream then sends
+    // plain frames, which every client accepts.
+    delete headers["sec-websocket-extensions"];
+
+    const upstreamReq = target.transport.client.request({
+      protocol: target.url.protocol,
+      hostname: target.url.hostname,
+      port: target.url.port || (target.url.protocol === "https:" ? 443 : 80),
+      method: clientReq.method,
+      path: target.path,
+      headers,
+      agent: target.transport.agent,
+    });
+
+    upstreamReq.on("upgrade", (res: http.IncomingMessage, upSocket: net.Socket, upHead: Buffer) => {
+      track(upSocket);
+      upSocket.on("error", () => clientSocket.destroy());
+      clientSocket.on("error", () => upSocket.destroy());
+      const lines = [`HTTP/1.1 ${res.statusCode ?? 101} ${res.statusMessage ?? "Switching Protocols"}`];
+      for (let i = 0; i < res.rawHeaders.length; i += 2) lines.push(`${res.rawHeaders[i]}: ${res.rawHeaders[i + 1]}`);
+      clientSocket.write(lines.join("\r\n") + "\r\n\r\n");
+      if (DEBUG) log(`websocket ${target.url.host}${target.path}`);
+
+      const rl = extractRateLimit(res.headers);
+      if (rl) opts.onRateLimit?.(rl);
+
+      // One exchange per response.create, ended by its response.completed.
+      let turn: ResponsesTurn | null = null;
+      let info: RequestInfo = { prompt: null, background: false };
+      let open = 0;
+      const endOne = (): void => {
+        if (open > 0) {
+          open--;
+          opts.onExchange?.("end");
+        }
+      };
+      const fromClient = readable
+        ? new WsReader((text) => {
+            const msg = JSON.parse(text) as { type?: string };
+            if (msg?.type !== "response.create") return;
+            info = observeRequest(FORMATS["openai-responses"], msg);
+            open++;
+            opts.onExchange?.("start");
+          })
+        : null;
+      const fromServer = readable
+        ? new WsReader((text) => {
+            const event = JSON.parse(text) as { type?: string };
+            const limits = rateLimitFromEvent(event);
+            if (limits) {
+              opts.onRateLimit?.(limits);
+              return;
+            }
+            turn ??= createResponsesTurn();
+            if (turn.handle(event)) {
+              const done = turn.result();
+              turn = null;
+              try {
+                emitTurn(done, target.path, info);
+              } finally {
+                endOne();
+              }
+            } else if (event?.type === "error") {
+              turn = null;
+              endOne();
+            }
+          })
+        : null;
+
+      if (upHead.length) {
+        clientSocket.write(upHead);
+        fromServer?.feed(upHead);
+      }
+      if (clientHead.length) {
+        upSocket.write(clientHead);
+        fromClient?.feed(clientHead);
+      }
+      upSocket.on("data", (d: Buffer) => {
+        if (!clientSocket.destroyed) clientSocket.write(d);
+        fromServer?.feed(d);
+      });
+      clientSocket.on("data", (d: Buffer) => {
+        if (!upSocket.destroyed) upSocket.write(d);
+        fromClient?.feed(d);
+      });
+      const closeBoth = (): void => {
+        while (open > 0) endOne();
+        if (!upSocket.destroyed) upSocket.end();
+        if (!clientSocket.destroyed) clientSocket.end();
+      };
+      upSocket.on("close", closeBoth);
+      clientSocket.on("close", closeBoth);
+    });
+
+    // The upstream refused the upgrade: hand its answer to the agent, which
+    // then falls back to plain HTTP.
+    upstreamReq.on("response", (res: http.IncomingMessage) => {
+      const lines = [`HTTP/1.1 ${res.statusCode ?? 502} ${res.statusMessage ?? ""}`];
+      for (let i = 0; i < res.rawHeaders.length; i += 2) {
+        const name = res.rawHeaders[i]!.toLowerCase();
+        if (name === "transfer-encoding" || name === "connection") continue;
+        lines.push(`${res.rawHeaders[i]}: ${res.rawHeaders[i + 1]}`);
+      }
+      const chunks: Buffer[] = [];
+      res.on("data", (d: Buffer) => chunks.push(d));
+      res.on("end", () => {
+        const b = Buffer.concat(chunks);
+        lines.push(`Content-Length: ${b.length}`, "Connection: close");
+        clientSocket.end(Buffer.concat([Buffer.from(lines.join("\r\n") + "\r\n\r\n"), b]));
+      });
+    });
+    upstreamReq.on("error", (err: Error) => {
+      if (DEBUG) log(`websocket upstream error: ${err.message}`);
+      clientSocket.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n");
+    });
+    upstreamReq.end();
+  });
+
   return new Promise((resolve) => {
     server.listen(opts.port ?? 0, "127.0.0.1", () => {
       const addr = server.address() as AddressInfo;
@@ -301,9 +540,14 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
         server,
         port: addr.port,
         url: `http://127.0.0.1:${addr.port}`,
-        via: transport.via,
+        via,
         close: () =>
-          new Promise<void>((res) => server.close(() => res())),
+          new Promise<void>((res) => {
+            server.close(() => res());
+            // Open WebSockets and keep-alive sockets must not hold the exit.
+            server.closeAllConnections?.();
+            for (const s of upgraded) s.destroy();
+          }),
       });
     });
   });

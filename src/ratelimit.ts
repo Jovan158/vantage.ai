@@ -89,19 +89,65 @@ function parseUnified(raw: Record<string, string>): UnifiedRateLimit | undefined
   };
 }
 
+// Codex on a ChatGPT plan reports its usage limits the same way in spirit:
+//   x-codex-{primary,secondary}-{used-percent,window-minutes,reset-at}
+// primary is the 5-hour window and secondary the weekly one; used-percent is
+// 0..100 and reset-at epoch seconds. Over a WebSocket the same numbers come
+// as a "codex.rate_limits" event (see rateLimitFromEvent).
+function windowKey(minutes: number | null, fallback: string): string {
+  if (minutes === 300) return "5h";
+  if (minutes === 10080) return "7d";
+  if (minutes && minutes % 1440 === 0) return `${minutes / 1440}d`;
+  if (minutes && minutes % 60 === 0) return `${minutes / 60}h`;
+  return minutes ? `${minutes}m` : fallback;
+}
+
+function parseCodex(raw: Record<string, string>): UnifiedRateLimit | undefined {
+  const windows: UnifiedWindow[] = [];
+  for (const [slot, fallback] of [["primary", "5h"], ["secondary", "7d"]] as const) {
+    const used = num(raw[`x-codex-${slot}-used-percent`]);
+    if (used == null) continue;
+    const minutes = num(raw[`x-codex-${slot}-window-minutes`]);
+    windows.push({
+      key: windowKey(minutes, fallback),
+      status: used >= 100 ? "rejected" : null,
+      utilization: used / 100,
+      resetUnix: num(raw[`x-codex-${slot}-reset-at`]),
+    });
+  }
+  if (windows.length === 0) return undefined;
+  return { status: null, representativeClaim: null, overageStatus: null, windows };
+}
+
+// A "codex.rate_limits" WebSocket event, as the same snapshot the headers
+// give (with the header names, so the event log reads back the same way).
+export function rateLimitFromEvent(event: unknown): RateLimitSnapshot | null {
+  const e = event as { type?: string; rate_limits?: Record<string, { used_percent?: number; window_minutes?: number; reset_at?: number } | null> };
+  if (!e || e.type !== "codex.rate_limits" || !e.rate_limits) return null;
+  const headers: Record<string, string> = {};
+  for (const slot of ["primary", "secondary"]) {
+    const w = e.rate_limits[slot];
+    if (!w || typeof w.used_percent !== "number") continue;
+    headers[`x-codex-${slot}-used-percent`] = String(w.used_percent);
+    if (w.window_minutes != null) headers[`x-codex-${slot}-window-minutes`] = String(w.window_minutes);
+    if (w.reset_at != null) headers[`x-codex-${slot}-reset-at`] = String(w.reset_at);
+  }
+  return extractRateLimit(headers);
+}
+
 // Returns null when the response carries no rate-limit information at all.
 export function extractRateLimit(headers: Headers): RateLimitSnapshot | null {
   const raw: Record<string, string> = {};
   for (const [k, v] of Object.entries(headers)) {
     const key = k.toLowerCase();
-    if (key.startsWith("anthropic-ratelimit-") || key === "retry-after") {
+    if (key.startsWith("anthropic-ratelimit-") || /^x-codex-(?:primary|secondary)-/.test(key) || key === "retry-after") {
       raw[key] = Array.isArray(v) ? v.join(", ") : String(v ?? "");
     }
   }
   if (Object.keys(raw).length === 0) return null;
 
   return {
-    unified: parseUnified(raw),
+    unified: parseUnified(raw) ?? parseCodex(raw),
     requests: classicField(raw, "requests"),
     tokens: classicField(raw, "tokens"),
     inputTokens: classicField(raw, "input-tokens"),
