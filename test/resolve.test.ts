@@ -86,7 +86,7 @@ test("a real .exe is spawned directly", () => {
   assert.ok(r.ok);
   assert.equal(r.resolved.command, path.join(dir, "claude.exe"));
   assert.deepEqual(r.resolved.prefix, []);
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 test("an npm .cmd shim becomes node + its script, no shell", () => {
@@ -99,7 +99,7 @@ test("an npm .cmd shim becomes node + its script, no shell", () => {
   assert.ok(r.ok);
   assert.equal(r.resolved.command, "C:\\node\\node.exe");
   assert.deepEqual(r.resolved.prefix, [script]);
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 test("an npm shim around a native exe starts that exe directly", () => {
@@ -112,7 +112,7 @@ test("an npm shim around a native exe starts that exe directly", () => {
   assert.ok(r.ok);
   assert.equal(r.resolved.command, exe);
   assert.deepEqual(r.resolved.prefix, [], "no node in front of a native exe");
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 test("clear reasons when the command cannot be started safely", () => {
@@ -130,7 +130,7 @@ test("clear reasons when the command cannot be started safely", () => {
   const dangling = resolveCommand("claude", { platform: "win32", env });
   assert.ok(!dangling.ok);
   assert.match(dangling.reason, /does not exist/);
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 // Real Windows only: build an npm-style shim, resolve it, spawn it, and prove
@@ -153,7 +153,7 @@ test("on Windows, a shimmed agent starts and receives arguments untouched", { sk
   const out = spawnSync(r.resolved.command, [...r.resolved.prefix, "-p", tricky], { encoding: "utf8" });
   assert.equal(out.status, 0, out.stderr);
   assert.deepEqual(JSON.parse(out.stdout), ["-p", tricky]);
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 // Real Windows only, native-exe shape (what current Claude Code installs): the
@@ -184,5 +184,7 @@ test("on Windows, an exe-shimmed agent starts and receives arguments untouched",
   const out = spawnSync(r.resolved.command, [printer, "-p", tricky], { encoding: "utf8" });
   assert.equal(out.status, 0, out.stderr);
   assert.deepEqual(JSON.parse(out.stdout), ["-p", tricky]);
-  fs.rmSync(dir, { recursive: true, force: true });
+  // Windows keeps an .exe locked for a moment after it exits (EBUSY);
+  // rmSync retries instead of failing the test.
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });

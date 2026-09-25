@@ -190,7 +190,7 @@ test("`vantage run --max-cost`: the request that crosses the budget makes the ne
   assert.doesNotMatch(under.err, /budget reached/);
 
   await mock.close();
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 test("an invalid budget value is refused before anything starts", async () => {
@@ -199,7 +199,7 @@ test("an invalid budget value is refused before anything starts", async () => {
   assert.equal(r.code, 1);
   assert.match(r.err, /--max-quota needs a percentage/);
   assert.equal(fs.existsSync(path.join(dir, ".vantage")), false);
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 // The race the review found: Claude Code runs the hook for a tool while the
@@ -262,6 +262,6 @@ const fs = require("node:fs");
     assert.equal(JSON.parse(hook).hookSpecificOutput.permissionDecision, "ask", "judged after the reply was metered");
   } finally {
     await new Promise<void>((res) => upstream.close(() => res()));
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });

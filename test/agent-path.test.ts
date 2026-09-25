@@ -19,7 +19,7 @@ function runVantage(agentPath: string, agentArgs: string[]) {
     ["--experimental-strip-types", cli, "run", "claude", "--", ...agentArgs],
     { cwd, encoding: "utf8", env: { ...process.env, VANTAGE_AGENT_PATH: agentPath, VANTAGE_HOME: cwd }, timeout: 30_000 }
   );
-  fs.rmSync(cwd, { recursive: true, force: true });
+  fs.rmSync(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   return res;
 }
 
