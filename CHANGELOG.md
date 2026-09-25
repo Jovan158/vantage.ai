@@ -1,8 +1,15 @@
 # Changelog
 
+## 0.1.2 — 2026-09-25
+
+No changes to how Vantage works. 0.1.1 was published from a checkout that did not have its changes yet; 0.1.2 carries them:
+
+- The new README: what Vantage does for you, a screenshot of `vantage watch`, a FAQ, and how to contribute.
+- Files in the package use Unix line endings, also when the package is built on Windows.
+
 ## 0.1.1 — 2026-09-25
 
-No changes to how Vantage works.
+No changes to how Vantage works. The published package missed the README and line-ending changes below; they arrived in 0.1.2.
 
 - A new README: what Vantage does for you, a screenshot of `vantage watch`, a FAQ, and how to contribute.
 - The package description is the slogan alone: "See and control what your coding agent does".
