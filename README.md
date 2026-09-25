@@ -2,7 +2,7 @@
 <img width="65%" alt="vantage.ai" src="images/vantage.ai.jpg" />
 </p>
 
-## See and control what your AI does
+## See and control what your coding agent does
 
 
 Vantage wraps AI coding agents without changing them. It sits between your coding agent and the API as a local proxy and uses the agent's own hooks and configuration mechanisms to enforce your rules.

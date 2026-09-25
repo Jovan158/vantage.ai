@@ -1,7 +1,7 @@
 {
   "name": "vantage-ai-cli",
   "version": "0.0.1",
-  "description": "Control & transparency layer for Claude Code: live cost and quota, action approvals, session replay, isolation, project memory",
+  "description": "See and control what your coding agent does: live cost and quota, approvals, secret warnings, session replay, change summaries, project memory. Currently for Claude Code.",
   "type": "module",
   "bin": {
     "vantage": "bin/vantage.mjs"

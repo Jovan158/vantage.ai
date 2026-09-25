@@ -1,4 +1,4 @@
-// vantage — see and control what Claude Code does.
+// vantage — see and control what your coding agent does.
 //
 // The entry point: parses the command and hands over to src/commands/. Its
 // own path is what Claude Code starts for the approval hook, so it is passed
@@ -6,6 +6,7 @@
 
 import { fileURLToPath } from "node:url";
 import { knownAgents } from "./agents/index.ts";
+import { banner, bannerForStdout } from "./banner.ts";
 import { log } from "./commands/output.ts";
 import { cmdRun } from "./commands/run.ts";
 import { cmdWatch } from "./commands/watch.ts";
@@ -22,9 +23,12 @@ import { cmdDemo } from "./commands/demo.ts";
 
 const ENTRY = fileURLToPath(import.meta.url);
 
-function printHelp(): void {
+// The logo heads the help when it is asked for; after a mistyped command
+// the help follows the error, plain.
+function printHelp(withLogo = true): void {
+  const head = withLogo ? bannerForStdout() : banner({ art: false, color: false });
   process.stdout.write(
-    `vantage — see and control what Claude Code does\n\n` +
+    `${head}\n\n` +
       `Usage:\n` +
       `  vantage run [--isolate] [--no-memory] [--max-cost <usd>] [--max-quota <percent>]\n` +
       `              <agent> [-- <agent args...>]\n` +
@@ -85,7 +89,7 @@ async function main(): Promise<void> {
   const run = Object.hasOwn(COMMANDS, cmd) ? COMMANDS[cmd] : undefined;
   if (!run) {
     log(`unknown command "${cmd}"`);
-    printHelp();
+    printHelp(false);
     process.exit(1);
   }
   process.exit(await run(rest));
