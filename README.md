@@ -38,8 +38,8 @@ Currently we **only** support **Claude Code**.
 Vantage is not on npm yet. Install it from a checkout:
 
 ```bash
-git clone https://github.com/Jovan158/vantage.dev.git
-cd vantage.dev
+git clone https://github.com/Jovan158/vantage.ai.git
+cd vantage.ai
 npm install
 npm pack
 npm install -g ./vantagedev-0.0.1.tgz
