@@ -32,10 +32,14 @@ Publishing to npm is done by the `Release` workflow
 
 The workflow needs permission to publish `@jovan158/vantage`. Either:
 
-- **Trusted publishing (recommended, no secret to keep).** Once the package
-  exists on npm: on npmjs.com, open the package's *Settings*, add a trusted
-  publisher for GitHub Actions with the repository `Jovan158/vantage.ai` and
-  the workflow file `release.yml`.
+- **Trusted publishing (recommended, no secret to keep).** On npmjs.com, open
+  the package's *Settings*, and under *Trusted Publisher* choose *GitHub
+  Actions*. Enter `Jovan158` as organization or user, `vantage.ai` as
+  repository and `release.yml` as workflow filename; leave the environment
+  empty. Under *Allowed actions*, also allow `npm publish` — new entries only
+  allow staged publishing otherwise, and the workflow fails. Afterwards, under
+  *Publishing access*, *Require two-factor authentication and disallow
+  tokens* keeps anyone with a leaked token from publishing.
 - **An access token.** On npmjs.com, create a granular access token with read
   and write access to the `@jovan158` scope, and store it in this repository
   under *Settings > Secrets and variables > Actions* as `NPM_TOKEN`.
