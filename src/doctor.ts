@@ -92,10 +92,11 @@ export function checkClaude(opts: DoctorOptions): Check {
 }
 
 // Every agent Vantage knows: the ones installed, and a note for the rest.
-// Without any installed agent there is nothing to run.
+// Without any installed agent there is nothing to run. VANTAGE_AGENT_PATH
+// names one executable; without an agent named, it is Claude Code's.
 export function checkAgents(opts: DoctorOptions): Check[] {
-  const env = { ...(opts.env ?? process.env), VANTAGE_AGENT_PATH: "" };
-  const checks = AGENTS.map((a) => checkAgent(a, { ...opts, env }, false));
+  const env = opts.env ?? process.env;
+  const checks = AGENTS.map((a, i) => checkAgent(a, i === 0 ? opts : { ...opts, env: { ...env, VANTAGE_AGENT_PATH: "" } }, false));
   if (checks.every((c) => c.level === "info")) {
     return [{ level: "fail", text: "no coding agent found", hint: `install one, e.g. ${AGENTS[0]!.install}` }, ...checks];
   }
