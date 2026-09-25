@@ -1,5 +1,5 @@
 <p align="center">
-<img width="65%" height="768" alt="vantage.ai" src="images/vantage.ai.jpg" />
+<img width="65%" alt="vantage.ai" src="images/vantage.ai.jpg" />
 </p>
 
 ## See and control what your AI does
