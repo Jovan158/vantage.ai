@@ -35,14 +35,18 @@ Currently we **only** support **Claude Code**.
 
 ## Install
 
-Vantage is not on npm yet. Install it from a checkout:
+```bash
+npm install -g vantage-ai-cli
+```
+
+The command is `vantage`. To install from a checkout instead:
 
 ```bash
 git clone https://github.com/Jovan158/vantage.ai.git
 cd vantage.ai
 npm install
 npm pack
-npm install -g ./vantage-ai-cli-0.0.1.tgz
+npm install -g ./vantage-ai-cli-0.1.0.tgz
 ```
 
 ## Quick start
