@@ -61,9 +61,6 @@ Arguments after `--` go to Claude Code: `vantage run claude -- -p "fix the faili
 
 While Claude Code's chat is open, Vantage never writes into its terminal: alerts appear in the chat itself, and live numbers in `vantage watch`. Afterwards, `vantage replay <id>`, `vantage stats` and `vantage search <text>` look back.
 
-<p align="center">
-  <img alt="vantage watch with two sessions running: shared limits, and each session's status, cost and messages" src="images/watch-sessions.png" width="70%">
-</p>
 
 ## Commands
 
