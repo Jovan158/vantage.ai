@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { initMemory, compileMemory, hasMemory, addNote, memoryDir } from "../src/memory.ts";
+import { initMemory, compileMemory, addNote, memoryDir } from "../src/memory.ts";
 
 function tmp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "vantage-mem-"));
@@ -15,8 +15,7 @@ test("init scaffolds files; empty templates do not count as memory", () => {
   const cwd = tmp();
   const { created } = initMemory(cwd);
   assert.ok(created.includes("decisions.md"));
-  assert.equal(hasMemory(cwd), false, "template-only store is empty");
-  assert.equal(compileMemory(cwd), null);
+  assert.equal(compileMemory(cwd), null, "template-only store is empty");
   fs.rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -32,7 +31,6 @@ test("compile includes only files with real content, in order", () => {
   assert.match(compiled!, /Chose Postgres/);
   // architecture appears before decisions
   assert.ok(compiled!.indexOf("Architecture") < compiled!.indexOf("Decisions"));
-  assert.equal(hasMemory(cwd), true);
   fs.rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -42,6 +40,6 @@ test("addNote appends a dated bullet and creates missing files", () => {
   const body = fs.readFileSync(p, "utf8");
   assert.match(body, /# Decisions/);
   assert.match(body, /- \(\d{4}-\d{2}-\d{2}\) use worktrees for isolation/);
-  assert.ok(hasMemory(cwd));
+  assert.ok(compileMemory(cwd));
   fs.rmSync(cwd, { recursive: true, force: true });
 });

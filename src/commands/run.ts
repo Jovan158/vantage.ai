@@ -46,6 +46,7 @@ import {
 } from "../git.ts";
 import { writeMeta, type SessionMeta } from "../session-meta.ts";
 import { terminal, log, warn, fmtFileLine } from "./output.ts";
+import { plain } from "../sanitize.ts";
 
 // Warn threshold as a fraction 0..1. VANTAGE_QUOTA_WARN accepts a fraction
 // (0.8) or a percent (80); default 90%.
@@ -218,7 +219,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
       if (info.background) return;
       eventLog.append({ ts: new Date().toISOString(), type: "request" });
     },
-    log: (msg) => terminal.info(`\x1b[2m[vantage:proxy]\x1b[0m ${msg}\n`),
+    log: (msg) => terminal.info(`\x1b[2m[vantage:proxy]\x1b[0m ${plain(msg)}\n`),
     onExchange: (phase) => (phase === "start" ? inflight?.start() : inflight?.end()),
     onUsage: (e: UsageEvent) => {
       eventLog.append(e);

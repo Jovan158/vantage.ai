@@ -5,6 +5,10 @@ on:
     branches: ["**"]
   pull_request:
 
+# Tests only read the repository.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
@@ -13,7 +17,8 @@ jobs:
       matrix:
         # Windows is here because a Windows user hit `rm -rf` in the clean
         # script — a failure no Linux-only run could have caught.
-        os: [ubuntu-latest, windows-latest]
+        # macOS because many Claude Code users are on a Mac.
+        os: [ubuntu-latest, windows-latest, macos-latest]
         # 22.6 is the floor declared in package.json engines (type stripping);
         # 24 guards against regressions on current Node.
         node: ["22.x", "24.x"]

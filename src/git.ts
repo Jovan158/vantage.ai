@@ -42,10 +42,6 @@ export function headSha(cwd: string): string {
   return git(cwd, ["rev-parse", "HEAD"]);
 }
 
-export function currentBranch(cwd: string): string {
-  return git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"]);
-}
-
 export function isDirty(cwd: string): boolean {
   return git(cwd, ["status", "--porcelain"]).length > 0;
 }

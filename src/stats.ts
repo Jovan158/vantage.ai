@@ -12,6 +12,7 @@ import { summarize } from "./replay.ts";
 import { extractRateLimit } from "./ratelimit.ts";
 import { formatCost } from "./pricing.ts";
 import type { SessionRef } from "./home.ts";
+import { plain } from "./sanitize.ts";
 
 export interface SessionStat {
   ref: SessionRef;
@@ -45,7 +46,7 @@ function windowRise(events: VantageEvent[], key: string): number {
 }
 
 function projectName(cwd: string): string {
-  return cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? cwd;
+  return plain(cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? cwd);
 }
 
 export function sessionStat(ref: SessionRef, events: VantageEvent[]): SessionStat | null {
@@ -221,7 +222,7 @@ export function renderStats(all: SessionStat[], opts: StatsOptions): string {
       `  ${formatCost(s.costUsd, s.unpriced, s.requests).padEnd(9)} ${c.dim}${when}  ${fit(show(s.project), 16).padEnd(16)}  ${fmtTokens(s.tokens).padStart(5)} tokens${c.reset}  ` +
         `${fit(s.firstPrompt ?? "(no prompt captured)", 60)}`
     );
-    lines.push(`  ${c.dim}${" ".repeat(9)} vantage replay ${s.ref.sessionId}${opts.cwd && path.resolve(s.ref.cwd) === path.resolve(opts.cwd) ? "" : `   (in ${s.ref.cwd})`}${c.reset}`);
+    lines.push(`  ${c.dim}${" ".repeat(9)} vantage replay ${s.ref.sessionId}${opts.cwd && path.resolve(s.ref.cwd) === path.resolve(opts.cwd) ? "" : `   (in ${plain(s.ref.cwd)})`}${c.reset}`);
   }
   return lines.join("\n");
 }

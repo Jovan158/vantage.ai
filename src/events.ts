@@ -3,6 +3,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { plainDeep } from "./sanitize.ts";
 
 export interface UsageEvent {
   ts: string;
@@ -162,7 +163,9 @@ export function parseEventLines(text: string): VantageEvent[] {
     if (!line.trim()) continue;
     try {
       const e = JSON.parse(line) as VantageEvent;
-      if (e && typeof e === "object" && typeof e.type === "string") out.push(e);
+      // Logs hold text from outside (file names, prompts, tool output); it is
+      // shown in the terminal, so control sequences go here (src/sanitize.ts).
+      if (e && typeof e === "object" && typeof e.type === "string") out.push(plainDeep(e));
     } catch {
       /* skip the damaged line */
     }

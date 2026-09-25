@@ -262,10 +262,6 @@ export function requestInfoFrom(parsed: unknown): RequestInfo {
   };
 }
 
-export function extractUserPrompt(body: string): string | null {
-  return extractRequestInfo(body).prompt;
-}
-
 function promptFrom(msgs: Array<{ role?: string; content?: unknown }>): string | null {
   for (let i = msgs.length - 1; i >= 0; i--) {
     const m = msgs[i]!;

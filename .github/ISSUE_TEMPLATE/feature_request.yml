@@ -1,0 +1,16 @@
+name: Feature request
+description: An idea for something Vantage could do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What gets in your way when you work with your coding agent?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: How Vantage could help.
