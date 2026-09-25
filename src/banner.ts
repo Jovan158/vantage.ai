@@ -10,17 +10,16 @@ import { fileURLToPath } from "node:url";
 
 export const SLOGAN = "See and control what your coding agent does";
 
-// Each line split where ".ai" begins, so it can take its own color.
-const ART: Array<[string, string]> = [
-  ["                    __                 ", "         _"],
-  [" _   ______ _____  / /_____ _____ ____ ", "  ____ _(_)"],
-  ["| | / / __ `/ __ \\/ __/ __ `/ __ `/ _ \\", " / __ `/ /"],
-  ["| |/ / /_/ / / / / /_/ /_/ / /_/ /  __/", "/ /_/ / /"],
-  ["|___/\\__,_/_/ /_/\\__/\\__,_/\\__, /\\___", "(_)__,_/_/"],
-  ["                          /____/", ""],
+const ART: string[] = [
+  "                    __                          _",
+  " _   ______ _____  / /_____ _____ ____   ____ _(_)",
+  "| | / / __ `/ __ \\/ __/ __ `/ __ `/ _ \\ / __ `/ /",
+  "| |/ / /_/ / / / / /_/ /_/ / /_/ /  __// /_/ / /",
+  "|___/\\__,_/_/ /_/\\__/\\__,_/\\__, /\\___(_)__,_/_/",
+  "                          /____/",
 ];
 
-const ART_WIDTH = Math.max(...ART.map(([a, b]) => a.length + b.length));
+const ART_WIDTH = Math.max(...ART.map((l) => l.length));
 
 export function packageVersion(): string {
   try {
@@ -43,15 +42,14 @@ export interface BannerOptions {
 export function banner(opts: BannerOptions): string {
   const version = opts.version ?? packageVersion();
   const v = version ? ` · v${version}` : "";
+  // The terminal's own text color (white on a dark background, black on a
+  // light one), the logo in bold.
   const bold = opts.color ? "\x1b[1m" : "";
-  const accent = opts.color ? "\x1b[36m" : ""; // cyan
-  const dim = opts.color ? "\x1b[2m" : "";
   const reset = opts.color ? "\x1b[0m" : "";
   const tagline = `${SLOGAN}${v}`;
   const fits = !opts.columns || opts.columns >= Math.max(ART_WIDTH, tagline.length); // 0: width unknown
-  if (!opts.art || !fits) return `${bold}vantage${accent}.ai${reset} ${dim}· ${tagline}${reset}`;
-  const lines = ART.map(([name, ai]) => `${bold}${name}${reset}` + (ai ? `${accent}${ai}${reset}` : ""));
-  return [...lines, `${dim}${tagline}${reset}`].join("\n");
+  if (!opts.art || !fits) return `${bold}vantage.ai${reset} · ${tagline}`;
+  return [...ART.map((line) => `${bold}${line}${reset}`), tagline].join("\n");
 }
 
 // For stdout as it is now: the logo in a terminal, one line otherwise;
