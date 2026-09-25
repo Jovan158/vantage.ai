@@ -1,5 +1,5 @@
 <p align="center">
-<img width="65%" height="768" alt="vantage.ai" src="https://github.com/user-attachments/assets/13b85a02-08a3-4ea0-813c-44c4c14bbe23" />
+<img width="65%" height="768" alt="vantage.ai" src="https://github.com/Jovan158/vantage.ai/blob/claude/pensive-dijkstra-wxw8rz/images/vantage.ai.jpg" />
 </p>
 
 ## See and control what your AI does
