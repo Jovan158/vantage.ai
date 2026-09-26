@@ -14,7 +14,7 @@
   <a href="https://nodejs.org"><img alt="Node.js 22.6+" src="https://img.shields.io/badge/node-%E2%89%A522.6-brightgreen"></a>
 </p>
 
-Vantage is a free, open-source cost and usage monitor, guardrail and session log for coding agents: [Claude Code](https://code.claude.com/docs), Codex, GitHub Copilot CLI, OpenCode and pi. Start your agent with `vantage run claude` (or `codex`, `copilot`, …) and work as usual: Vantage shows what the session costs and how much of your limit is left, asks before the agent touches the files and commands you care about, warns you when a secret is sent to the API, and records everything so you can look back.
+Vantage is a free, open-source cost and usage monitor, guardrail and session log for coding agents. Start your agent with `vantage run <agent>` and work as usual: Vantage shows what the session costs and how much of your limit is left, asks before the agent touches the files and commands you care about, warns you when a secret is sent to the API, and records everything so you can look back.
 
 **Everything stays on your machine.** Vantage sends no telemetry and changes nothing in your agent's setup. The only request it makes on its own is `vantage pricing update`, and only when you run it.
 
@@ -65,7 +65,6 @@ vantage watch           # live view, in a second terminal
 
 - **Tokens and cost:** the cost is shown for Claude, GPT and Gemini models, whichever agent calls them; for other models (DeepSeek or Mistral through OpenCode, say) Vantage counts the tokens and says the price is unknown (see [Prices](#prices)).
 - **Rules that ask:** Codex and OpenCode can block a tool call from a hook but not pause to ask. There a rule set to `ask` blocks the action, and the agent is told to leave it to you. `deny` works everywhere.
-- **Tested** against the real CLIs of all five ([`scripts/e2e-agents.ts`](scripts/e2e-agents.ts)).
 
 ## Guide
 
@@ -83,7 +82,7 @@ How to use each part, step by step:
 10. [Prices](#prices) — where the cost estimate comes from
 11. [Troubleshooting](#troubleshooting)
 
-Also: [Reference](#reference) (commands, options, environment variables, how it works) · [FAQ](#faq)
+Also: [Reference](#reference) (commands, options, environment variables, how it works)
 
 ### Start a session
 
@@ -295,10 +294,6 @@ Environment variables:
 Each session is recorded in the project's `.vantage/sessions/`, including excerpts of prompts and replies; Vantage keeps that folder out of git with its own `.vantage/.gitignore`, so rules and project memory can still be committed. The price list and the index that `watch`, `stats` and `search` use across projects are kept in `~/.vantage`.
 
 ## FAQ
-
-**Is it free?** Yes. Vantage is open source under the MIT license.
-
-**Does it work with a Claude Pro or Max, or a ChatGPT subscription?** Yes, and with API keys. On a subscription, the quota bars are what counts; the cost is shown as what the same use would cost on the API.
 
 **Does it slow the agent down?** The proxy streams responses through as they arrive, without buffering. When rules or a budget are active, each tool call is checked by a short-lived process (about a tenth of a second); in the interactive chat, one also runs after each reply to show alerts.
 
