@@ -228,7 +228,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
       log(meter.statusLine());
       if (guard) {
         const t = meter.snapshot();
-        onBudget(guard.onCost(t.costUsd), guard.blindSpots(t.unpricedModels, null));
+        onBudget(guard.onCost(t.costUsd), guard.blindSpots(t.unpricedModels, t.requests));
       }
       const rl = meter.rateLimitLine();
       if (rl) log(rl);
@@ -247,7 +247,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
         raw: snapshot.raw,
       });
       for (const w of quota.update(snapshot)) alert(w);
-      if (guard) onBudget(guard.onQuota(snapshot), guard.blindSpots([], snapshot));
+      if (guard) onBudget(guard.onQuota(snapshot), []);
     },
   });
 

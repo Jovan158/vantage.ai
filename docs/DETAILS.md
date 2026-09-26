@@ -17,11 +17,11 @@ and shows a real forecast of your limits:
 [vantage] quota 5h 53% used reset 1h50m · 7d 6% used reset 156h50m
 ```
 
-The quota line covers both forms the API uses: **unified windows**
-(subscription/Pro/Max, what Claude Code actually gets back — 5-hour and 7-day
-utilization plus reset) and the **classic per-key buckets** (API-key billing —
-requests/tokens remaining). That subscription quota is exactly what counting
-tokens alone cannot show.
+The quota line shows the usage windows of a subscription: 5-hour and 7-day
+utilization plus reset, as Claude Pro/Max and ChatGPT plans report them with
+every response. That quota is exactly what counting tokens alone cannot show.
+An API key has no such windows, only limits per minute that refill within
+seconds and that the agent waits out by itself; Vantage does not read them.
 
 **Cost is an estimate at API list prices:** an exact lookup per model ID, cache
 writes split by 5-minute and 1-hour TTL. Unknown models are shown as `price
@@ -400,7 +400,7 @@ addition — no change to the core.
 | `src/proxy.ts` | Transparent streaming reverse proxy (layer B) |
 | `src/usage.ts` | The token usage of one model call |
 | `src/meter.ts` | Aggregated totals, rate and status line |
-| `src/ratelimit.ts` | Rate-limit headers → limit forecast (unified and classic) |
+| `src/ratelimit.ts` | Subscription usage windows from response headers → limit forecast |
 | `src/upstream.ts` | Egress connector (`HTTPS_PROXY`/`NO_PROXY`, CONNECT tunnel) |
 | `src/events.ts` | Append-only event log (JSONL) |
 | `src/git.ts` | Git session isolation (worktree/branch, aggregated diff) and working-tree snapshots |

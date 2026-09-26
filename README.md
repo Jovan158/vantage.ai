@@ -107,7 +107,7 @@ Open a second terminal, anywhere, and run `vantage watch`. It follows the sessio
 </p>
 
 - **Status:** what the agent is doing right now: thinking, working on a tool (with the file or command), waiting for your approval, or replied.
-- **Limits:** on a subscription, your 5-hour and weekly quota as bars, when each resets, how much of it this session used, and whether your current pace lasts until the reset. The limits belong to your whole account, so other use counts too. With an API key there are none, and this part stays empty.
+- **Limits:** on a subscription, your 5-hour and weekly quota as bars, when each resets, how much of it this session used, and whether your current pace lasts until the reset. The limits belong to your whole account, so other use counts too. With an API key there are none, and this part is left out.
 - **This session:** your messages against the model calls they caused, the estimated cost, a budget if you set one, and how many tokens the last message sent (and how much came from the cache).
 - **Activity:** the latest tool calls with the file, command or URL they touched, marked `asked` or `blocked` when a rule stepped in.
 

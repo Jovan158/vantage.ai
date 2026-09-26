@@ -19,6 +19,9 @@
 - `vantage pricing [show|update|check] [anthropic|openai|google]` works with all three lists; `vantage pricing openai` shows one.
 - Models on none of the lists (DeepSeek, Mistral, local models) are still metered, with the cost shown as unknown.
 
+### Changed
+- Only the usage limits of a subscription are shown and warned about (the 5-hour and weekly windows). The per-minute limits of an Anthropic API key are no longer read: they refill within seconds, the agent waits them out by itself, and the warning fired often on small API tiers. With a quota budget on an API key, Vantage now says after two requests that there are no windows to watch, for every provider.
+
 ## 0.1.3 — 2026-09-25
 
 ### Security

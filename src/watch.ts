@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { EventLog, sessionDir, type VantageEvent } from "./events.ts";
-import { extractRateLimit, formatRateLimit } from "./ratelimit.ts";
+import { extractRateLimit } from "./ratelimit.ts";
 import { agentShort } from "./agents/index.ts";
 import { summarizeActions, formatActionSummary } from "./policy.ts";
 import { summarize, relativeTarget, shortenPaths } from "./replay.ts";
@@ -256,12 +256,6 @@ export function renderLive(events: VantageEvent[], opts: LiveOptions): string {
       }
       if (notes.length) lines.push(`  ${c.dim}${notes.join(" · ")}${c.reset}`);
       if (warning) lines.push(`  ${c.red}${c.bold}${warning}${c.reset}`);
-    }
-  } else if (latest) {
-    const line = formatRateLimit(latest, now);
-    if (line) {
-      section("Limits");
-      lines.push(`  ${c.yellow}${line}${c.reset}`);
     }
   }
 

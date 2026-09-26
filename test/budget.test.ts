@@ -87,11 +87,15 @@ test("a state file left from an earlier run never blocks a new session", () => {
 
 test("blind spots are said once: unpriced models and accounts without quota windows", () => {
   const g = new BudgetGuard({ maxCostUsd: 1, maxQuota: 0.8 }, budgetStatePath(tmp("vantage-budget-")));
-  assert.match(g.blindSpots(["mystery-model"], null)[0]!, /cannot count requests to mystery-model/);
-  assert.deepEqual(g.blindSpots(["mystery-model"], null), []);
-  const apiKeyAccount: RateLimitSnapshot = { requests: { limit: 50, remaining: 49, reset: null }, retryAfterSec: null, raw: {} };
-  assert.match(g.blindSpots([], apiKeyAccount)[0]!, /use --max-cost/);
-  assert.deepEqual(g.blindSpots([], apiKeyAccount), []);
+  assert.match(g.blindSpots(["mystery-model"], 1)[0]!, /cannot count requests to mystery-model/);
+  assert.deepEqual(g.blindSpots(["mystery-model"], 1), []);
+  // An API key: two requests and no windows.
+  assert.match(g.blindSpots([], 2)[0]!, /use --max-cost/);
+  assert.deepEqual(g.blindSpots([], 3), []);
+  // A subscription reports its windows: no note.
+  const sub = new BudgetGuard({ maxCostUsd: null, maxQuota: 0.8 }, budgetStatePath(tmp("vantage-budget-")));
+  sub.onQuota(quota(0.1));
+  assert.deepEqual(sub.blindSpots([], 5), []);
 });
 
 test("while the budget is reached, every action needs approval; deny stays deny", () => {
