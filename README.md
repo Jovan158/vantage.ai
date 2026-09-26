@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img width="65%" alt="vantage.ai" src="images/vantage.ai.jpg" />
+  <img width="70%" alt="vantage.ai" src="images/vantage.ai.jpg" />
 </h1>
 
 <p align="center">
