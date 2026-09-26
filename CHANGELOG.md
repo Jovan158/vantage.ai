@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — 2026-09-25
+## 0.2.0 — 2026-09-26
 
 ### Four more agents
 `vantage run` now starts Codex, GitHub Copilot CLI, OpenCode and pi as well as Claude Code — `vantage run codex`, `vantage run copilot`, and so on. What works with each is in the README under *Supported agents*.

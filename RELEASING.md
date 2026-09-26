@@ -14,12 +14,13 @@ Publishing to npm is done by the `Release` workflow
 
    Add a section for it at the top of `CHANGELOG.md`.
 
-2. **Prices.** The package ships a copy of Anthropic's price list, and every
-   release should carry current prices. The weekly `Pricing` workflow keeps
-   `main` up to date; to be sure, run it right before releasing: *Actions >
-   Pricing > Run workflow* on `main`. When prices changed, it commits the new
-   list to `main` — release from that commit. The release checks this too and
-   stops if the list is out of date.
+2. **Prices.** The package ships a copy of the official price lists of
+   Anthropic, OpenAI and Google, and every release should carry current
+   prices. The weekly `Pricing` workflow keeps `main` up to date; to be sure,
+   run it right before releasing: *Actions > Pricing > Run workflow* on
+   `main`. When prices changed, it commits the new lists to `main` — release
+   from that commit. The release checks this too and stops if a list is out
+   of date.
 
 3. **Release.** On GitHub: *Releases > Draft a new release*, create the tag
    `v0.1.1` (the version from step 1) on `main`, paste the changelog section as
