@@ -22,7 +22,8 @@ export type PolicyLevel = "allow" | "warn" | "ask" | "deny";
 
 export type Policy = Record<ActionType, PolicyLevel>;
 
-// Known Claude Code tool names → action type.
+// Known tool names → action type: Claude Code's (which Copilot CLI reports
+// too), then the ones the name patterns below would get wrong.
 const TOOL_TYPES: Record<string, ActionType> = {
   Read: "read",
   NotebookRead: "read",
@@ -39,6 +40,8 @@ const TOOL_TYPES: Record<string, ActionType> = {
   KillShell: "shell",
   WebFetch: "network",
   WebSearch: "network",
+  ls: "read", // pi
+  codesearch: "network", // OpenCode: searches the web for code
 };
 
 export function classifyTool(name: string): ActionType {

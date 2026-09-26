@@ -5,8 +5,9 @@ name: Release
 #
 # Before publishing it checks, and stops without publishing when one fails:
 #   - the release tag (v0.1.1) matches the version in package.json
-#   - the bundled price list matches Anthropic's official one, so every
-#     release ships current prices (update it with the Pricing workflow)
+#   - the bundled price lists match the official ones (Anthropic, OpenAI,
+#     Google), so every release ships current prices (update them with the
+#     Pricing workflow)
 #   - type check and tests pass
 #
 # Authentication: npm trusted publishing (no secret needed once it is set up
@@ -50,10 +51,10 @@ jobs:
             exit 1
           fi
 
-      - name: The bundled price list is current
+      - name: The bundled price lists are current
         run: |
           if ! node bin/vantage.mjs pricing check; then
-            echo "::error::The bundled price list is out of date. Run the Pricing workflow (Actions > Pricing > Run workflow), which commits the new prices to main; then delete this release and its tag and create it again, so it points to that commit."
+            echo "::error::The bundled price lists are out of date. Run the Pricing workflow (Actions > Pricing > Run workflow), which commits the new prices to main; then delete this release and its tag and create it again, so it points to that commit."
             exit 1
           fi
 

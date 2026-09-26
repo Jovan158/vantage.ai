@@ -1,4 +1,4 @@
-// Unit tests for rate-limit extraction: unified (subscription) + classic (API key).
+// Unit tests for rate-limit extraction: the usage windows of a subscription.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -34,21 +34,16 @@ test("parses unified subscription headers (real Claude Code shape)", () => {
   assert.match(line!, /7d 6% used/);
 });
 
-test("parses classic per-key buckets (API-key billing)", () => {
-  const reset = new Date(Date.now() + 42_000).toISOString();
+test("an API key's per-minute limits are not read: it has no usage windows", () => {
   const headers = {
-    "anthropic-ratelimit-requests-limit": "5000",
-    "anthropic-ratelimit-requests-remaining": "4999",
-    "anthropic-ratelimit-tokens-limit": "1000",
-    "anthropic-ratelimit-tokens-remaining": "780",
-    "anthropic-ratelimit-tokens-reset": reset,
+    "anthropic-ratelimit-requests-limit": "50",
+    "anthropic-ratelimit-requests-remaining": "49",
+    "anthropic-ratelimit-input-tokens-limit": "30000",
+    "anthropic-ratelimit-input-tokens-remaining": "1200",
+    "x-ratelimit-remaining-tokens": "100",
   };
-  const s = extractRateLimit(headers);
-  assert.ok(s);
-  assert.equal(s!.requests?.remaining, 4999);
-  const line = formatRateLimit(s!);
-  assert.match(line!, /req 4999\/5000/);
-  assert.match(line!, /tok 78% left/);
+  assert.equal(extractRateLimit(headers), null);
+  assert.equal(extractRateLimit({ "retry-after": "30" }), null, "a 429 on an API key is the agent's to wait out");
 });
 
 test("surfaces retry-after and non-allowed status", () => {

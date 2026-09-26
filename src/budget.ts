@@ -154,6 +154,7 @@ export class BudgetGuard {
   private quotaReason: string | null = null;
   private warnedUnpriced = new Set<string>();
   private warnedNoWindows = false;
+  private sawWindows = false;
 
   constructor(budget: Budget, file: string) {
     this.budget = budget;
@@ -175,7 +176,8 @@ export class BudgetGuard {
 
   onQuota(s: RateLimitSnapshot): BudgetChange | null {
     const max = this.budget.maxQuota;
-    const windows = s.unified?.windows ?? [];
+    const windows = s.unified.windows;
+    if (windows.length > 0) this.sawWindows = true;
     if (max === null || windows.length === 0) return null;
     const over = windows.filter((w) => w.utilization !== null && w.utilization >= max);
     if (over.length > 0 && this.quotaReason === null) {
@@ -192,7 +194,7 @@ export class BudgetGuard {
    * One-time notes on what the guard cannot see, so a budget that never trips
    * is never mistaken for one that was never reached.
    */
-  blindSpots(unpricedModels: string[], snapshot: RateLimitSnapshot | null): string[] {
+  blindSpots(unpricedModels: string[], requests: number): string[] {
     const notes: string[] = [];
     if (this.budget.maxCostUsd !== null) {
       for (const m of unpricedModels) {
@@ -201,7 +203,9 @@ export class BudgetGuard {
         notes.push(`cost budget cannot count requests to ${m} (price unknown)`);
       }
     }
-    if (this.budget.maxQuota !== null && snapshot && !snapshot.unified?.windows.length && !this.warnedNoWindows) {
+    // A subscription reports its windows with the first responses; after two
+    // requests without any, there are none (an API key).
+    if (this.budget.maxQuota !== null && !this.sawWindows && requests >= 2 && !this.warnedNoWindows) {
       this.warnedNoWindows = true;
       notes.push("quota budget needs a subscription's 5h/7d windows; this account reports none — use --max-cost instead");
     }

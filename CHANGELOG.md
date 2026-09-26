@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.0 — 2026-09-26
+
+### Four more agents
+`vantage run` now starts Codex, GitHub Copilot CLI, OpenCode and pi as well as Claude Code — `vantage run codex`, `vantage run copilot`, and so on. What works with each is in the README under *Supported agents*.
+
+- **Tokens and activity** for every agent. The proxy now reads the OpenAI Responses and Chat Completions APIs and the Gemini API besides Anthropic's, serves several providers in one session, and passes Codex's WebSocket through while reading it.
+- **Usage limits of a ChatGPT plan**: Codex's 5-hour and weekly windows appear in `vantage watch`, warn before they run out, and work with `--max-quota`.
+- **Rules and budgets** for all five agents, through each one's own hooks. Codex and OpenCode can block but not ask from a hook: there an `ask` rule blocks and tells the agent to leave the action to you.
+- **Project memory** reaches Codex, Copilot CLI, OpenCode and pi too. Settings files stay untouched: hooks and memory are passed to each session on its own.
+- **`vantage doctor`** lists every agent it knows and whether it is installed; `vantage doctor <agent>` checks one.
+- Secret warnings, `watch`, `replay` and `search` name the agent that ran the session.
+
+### Prices for GPT and Gemini models
+- The cost estimate now covers GPT and Gemini models as well as Claude, at OpenAI's and Google's official list prices, whichever agent calls them. Like Anthropic's, both lists are read from the official pages by a parser that checks every price; a copy ships with Vantage and the weekly price workflow keeps it current.
+- Prices that depend on the prompt size (OpenAI's long-context rates, Google's above 200K tokens) are applied per request, and a price change a page announces for a later day applies from that day on.
+- Model names as other agents write them find their price: `claude-sonnet-4.6` (Copilot), `anthropic/claude-opus-5` (OpenCode), dated snapshots like `gpt-5.4-mini-2026-03-17`.
+- `vantage pricing [show|update|check] [anthropic|openai|google]` works with all three lists; `vantage pricing openai` shows one.
+- Models on none of the lists (DeepSeek, Mistral, local models) are still metered, with the cost shown as unknown.
+
+### Changed
+- Only the usage limits of a subscription are shown and warned about (the 5-hour and weekly windows). The per-minute limits of an Anthropic API key are no longer read: they refill within seconds, the agent waits them out by itself, and the warning fired often on small API tiers. With a quota budget on an API key, Vantage now says after two requests that there are no windows to watch, for every provider.
+
 ## 0.1.3 — 2026-09-25
 
 ### Security

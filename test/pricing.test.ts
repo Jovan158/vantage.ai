@@ -67,6 +67,34 @@ test("dated snapshot IDs and context tags resolve to the base model", () => {
   assert.equal(priceFor("claude-3-5-haiku-20241022")!.input, 0.8);
 });
 
+test("other agents' model names: provider prefixes, dotted Claude versions, dated OpenAI IDs", () => {
+  assert.equal(normalizeModelId("claude-sonnet-4.6"), "claude-sonnet-4-6"); // Copilot
+  assert.equal(normalizeModelId("anthropic/claude-opus-5"), "claude-opus-5"); // OpenCode, gateways
+  assert.equal(normalizeModelId("models/gemini-2.5-pro"), "gemini-2.5-pro");
+  assert.equal(normalizeModelId("gpt-5.4-mini"), "gpt-5.4-mini", "dots stay outside Claude");
+  assert.equal(priceFor("claude-sonnet-4.6")!.input, 3);
+  assert.equal(priceFor("openai/gpt-5.5")!.input, 5);
+  assert.equal(priceFor("gpt-5.4-mini-2026-03-17")!.output, 4.5, "a dated snapshot prices like its model");
+  assert.equal(priceFor("gpt-4o-2024-05-13")!.input, 5, "unless the list prices it on its own");
+  assert.equal(priceFor("gpt-4o-2024-08-06")!.input, 2.5);
+});
+
+test("OpenAI: cached input at its own rate, long prompts at the long-context rate", () => {
+  const short = usage("gpt-5.5", { input_tokens: 10_000, cache_read_input_tokens: 90_000, output_tokens: 1000 });
+  assert.ok(close(estimateCostUsd(short), (10_000 * 5 + 90_000 * 0.5 + 1000 * 30) / 1e6));
+  // The limit counts the whole prompt, cached part included.
+  const long = usage("gpt-5.5", { input_tokens: 100_000, cache_read_input_tokens: 200_000, output_tokens: 1000 });
+  assert.ok(close(estimateCostUsd(long), (100_000 * 10 + 200_000 * 1 + 1000 * 45) / 1e6));
+});
+
+test("Google: announced prices apply from their day on", () => {
+  const u = usage("gemini-3.8-flash", { input_tokens: 1_000_000, output_tokens: 1_000_000 });
+  assert.ok(close(estimateCostUsd(u, Date.parse("2026-12-31T23:59:00Z")), 0.75 + 3.75));
+  assert.ok(close(estimateCostUsd(u, Date.parse("2027-01-01T00:00:00Z")), 1.5 + 7.5));
+  const long = usage("gemini-2.5-pro", { input_tokens: 250_000 });
+  assert.ok(close(estimateCostUsd(long), (250_000 * 2.5) / 1e6));
+});
+
 test("unknown models have no price — never a guessed one", () => {
   assert.equal(priceFor("claude-opus-9"), null);
   assert.equal(priceFor("some-gateway-model"), null);

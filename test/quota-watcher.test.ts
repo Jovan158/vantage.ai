@@ -41,22 +41,11 @@ test("warns critically when a window is rejected", () => {
 
 test("warns on retry-after", () => {
   const w = new QuotaWatcher(0.9);
-  const snap = extractRateLimit({ "retry-after": "30" })!;
+  const snap = extractRateLimit({ "anthropic-ratelimit-unified-5h-utilization": "0.5", "retry-after": "30" })!;
   const out = w.update(snap);
   assert.equal(out.length, 1);
   assert.equal(out[0]!.level, "critical");
   assert.match(out[0]!.message, /retry after 30s/);
-});
-
-test("classic buckets warn when nearly drained", () => {
-  const w = new QuotaWatcher(0.9);
-  const snap = extractRateLimit({
-    "anthropic-ratelimit-tokens-limit": "1000",
-    "anthropic-ratelimit-tokens-remaining": "50", // 95% used
-  })!;
-  const out = w.update(snap);
-  assert.equal(out.length, 1);
-  assert.match(out[0]!.message, /tokens 95% used/);
 });
 
 test("allowed_warning is close to the limit, not blocked", () => {

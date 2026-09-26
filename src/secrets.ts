@@ -15,7 +15,7 @@
 // caller deduplicates by fingerprint.
 
 import { createHash } from "node:crypto";
-import { toolTarget } from "./turn.ts";
+import { anthropicParts, type ConversationPart } from "./formats/parts.ts";
 
 export interface SecretFinding {
   kind: string;
@@ -96,63 +96,29 @@ export function scanText(raw: string, source: string): SecretFinding[] {
   return out;
 }
 
-type Block = { type?: string; text?: string; id?: string; name?: string; input?: unknown; tool_use_id?: string; content?: unknown };
-
-function blockText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) return content.map((b) => (b && typeof b === "object" && typeof (b as Block).text === "string" ? (b as Block).text : "")).join("\n");
-  return "";
-}
-
-// The text values inside a tool input (e.g. the content Claude writes), with
-// their real line breaks — JSON would escape them.
-function stringsOf(value: unknown, out: string[] = []): string[] {
-  if (typeof value === "string") out.push(value);
-  else if (Array.isArray(value)) for (const v of value) stringsOf(v, out);
-  else if (value && typeof value === "object") for (const v of Object.values(value)) stringsOf(v, out);
-  return out;
-}
-
-// Scans a parsed Messages API request and attributes each finding: the tool
-// call whose output carried it, your message, Claude's reply, or the system
-// prompt (where CLAUDE.md and injected memory live).
+// Scans a request's conversation parts (src/formats/parts.ts) and attributes
+// each finding: the tool call whose output carried it, your message, the
+// agent's reply, or the system prompt (where CLAUDE.md and injected memory
+// live).
 //
 // `seen` makes a long session cheap: every request repeats the whole
 // history, so parts already scanned (recognized by a hash of their text) are
 // skipped. The tool calls in them are still read, to name the source of a
 // later tool result.
-export function scanRequest(body: unknown, seen?: Set<string>): SecretFinding[] {
-  if (!body || typeof body !== "object") return [];
-  const req = body as { system?: unknown; messages?: Array<{ role?: string; content?: unknown }> };
+export function scanParts(parts: ConversationPart[], seen?: Set<string>): SecretFinding[] {
   const found: SecretFinding[] = [];
-  const fresh = (kind: string, text: string): boolean => {
-    if (!seen || !text) return true;
-    const key = createHash("sha1").update(kind).update("\0").update(text).digest("hex");
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  };
-  const scan = (kind: string, text: string, source: string): void => {
-    if (fresh(kind, text)) found.push(...scanText(text, source));
-  };
-
-  scan("system", blockText(req.system), "the system prompt (CLAUDE.md, memory)");
-  const calls = new Map<string, string>();
-  for (const m of req.messages ?? []) {
-    const blocks: Block[] = typeof m.content === "string" ? [{ type: "text", text: m.content }] : Array.isArray(m.content) ? (m.content as Block[]) : [];
-    for (const b of blocks) {
-      if (!b || typeof b !== "object") continue;
-      if (b.type === "tool_use") {
-        const target = toolTarget(b.input);
-        const label = `${b.name ?? "tool"}${target ? ` ${target}` : ""}`;
-        if (b.id) calls.set(b.id, label);
-        scan(`use:${b.id ?? ""}`, stringsOf(b.input).join("\n"), `Claude's ${label} call`);
-      } else if (b.type === "tool_result") {
-        scan(`result:${b.tool_use_id ?? ""}`, blockText(b.content), `the output of ${calls.get(b.tool_use_id ?? "") ?? "a tool"}`);
-      } else if (typeof b.text === "string") {
-        scan(`text:${m.role ?? ""}`, b.text, m.role === "assistant" ? "Claude's reply" : "your message");
-      }
+  for (const p of parts) {
+    if (seen && p.text) {
+      const key = createHash("sha1").update(p.key).update("\0").update(p.text).digest("hex");
+      if (seen.has(key)) continue;
+      seen.add(key);
     }
+    found.push(...scanText(p.text, p.source));
   }
   return found;
+}
+
+// A Messages API request, as Claude Code sends it.
+export function scanRequest(body: unknown, seen?: Set<string>, agent = "Claude"): SecretFinding[] {
+  return scanParts(anthropicParts(body, agent), seen);
 }

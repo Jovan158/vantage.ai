@@ -202,7 +202,7 @@ export function renderStats(all: SessionStat[], opts: StatsOptions): string {
 
   // By project, most expensive first.
   lines.push("");
-  lines.push(`${c.bold}By project${c.reset} ${c.dim}· weekly limit share is approximate: other Claude use at the same time counts too${c.reset}`);
+  lines.push(`${c.bold}By project${c.reset} ${c.dim}· weekly limit share is approximate: other use of the same subscription at the same time counts too${c.reset}`);
   const byProject = [...group(stats, (s) => s.project).entries()].sort((a, z) => z[1].costUsd - a[1].costUsd);
   const nameWidth = Math.min(24, Math.max(...byProject.map(([p]) => show(p).length)));
   for (const [project, g] of byProject) {

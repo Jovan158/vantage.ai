@@ -4,7 +4,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { startProxy } from "../proxy.ts";
+import { startProxy, type RunningProxy } from "../proxy.ts";
 import { Meter } from "../meter.ts";
 import { EventLog, ensureVantageGitignore, newSessionId, sessionDir, sessionEventsPath, type UsageEvent } from "../events.ts";
 import { resolveAdapter, knownAgents } from "../agents/index.ts";
@@ -15,7 +15,8 @@ import { worthHarvesting } from "../harvest.ts";
 import { compileMemory } from "../memory.ts";
 import { loadPolicy, PolicyWatcher, needsEnforcement, type Policy } from "../policy.ts";
 import { loadRules, policyFilePath } from "../rules.ts";
-import { hookSettings, hookInvocation } from "../hook.ts";
+import { hookInvocation } from "../hook.ts";
+import { writeHookConfig, type HookConfig } from "../agents/hooks.ts";
 import { outboxPath, postAlert, takeAlerts } from "../outbox.ts";
 import type { QuotaWarning } from "../ratelimit.ts";
 import { resolveCommand } from "../resolve.ts";
@@ -113,7 +114,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
   const sep = afterAgent.indexOf("--");
   const agentArgs = sep === -1 ? afterAgent : afterAgent.slice(sep + 1);
 
-  const upstream = process.env.VANTAGE_UPSTREAM ?? adapter.defaultUpstream;
+  const routes = adapter.routes(process.env);
   const cwd = process.cwd();
   const sessionId = newSessionId();
   if (ensureVantageGitignore(cwd)) log("created .vantage/.gitignore — session logs stay out of git");
@@ -125,18 +126,18 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
   const policy = new PolicyWatcher(effectivePolicy);
   const guard = hasBudget(budget) ? new BudgetGuard(budget, budgetStatePath(sessionDir(cwd, sessionId))) : null;
 
-  // Claude Code's chat UI owns the terminal from launch until exit. Vantage
-  // then shows alerts in that chat, through a hook Claude Code runs after
-  // each reply (see src/outbox.ts); live numbers are in `vantage watch`.
+  // The agent's chat UI owns the terminal from launch until exit. Vantage
+  // then shows alerts in that chat, through a hook the agent runs after each
+  // reply (see src/outbox.ts); live numbers are in `vantage watch`.
   const interactive = adapter.isInteractive(agentArgs) && Boolean(process.stderr.isTTY);
-  const chatAlerts = interactive && Boolean(adapter.enforcementArgs);
+  const chatAlerts = interactive && adapter.capabilities.chatAlerts;
   const outbox = chatAlerts ? outboxPath(sessionDir(cwd, sessionId)) : null;
   // Exchanges in flight, so a hook can wait until the reply before it is
   // metered: the budget check, and alerts that reply caused.
   const inflight = guard || chatAlerts ? new InflightCounter(inflightPath(sessionDir(cwd, sessionId))) : null;
   const seenSecrets = new Set<string>();
 
-  // An alert goes to the chat while Claude Code's UI is open, else to stderr.
+  // An alert goes to the chat while the agent's UI is open, else to stderr.
   const alert = (w: QuotaWarning): void => {
     if (outbox && terminal.isHolding) postAlert(outbox, w);
     else warn(w);
@@ -202,9 +203,9 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
   });
   recordLastSession({ cwd, sessionId });
 
-  const proxy = await startProxy({
-    upstream,
-    provider: adapter.provider,
+  const proxy: RunningProxy = await startProxy({
+    routes,
+    agentName: adapter.name,
     // Lets watch say "Claude is thinking" while a chat turn is in flight.
     onRequest: (info) => {
       for (const f of info.secrets) {
@@ -227,7 +228,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
       log(meter.statusLine());
       if (guard) {
         const t = meter.snapshot();
-        onBudget(guard.onCost(t.costUsd), guard.blindSpots(t.unpricedModels, null));
+        onBudget(guard.onCost(t.costUsd), guard.blindSpots(t.unpricedModels, t.requests));
       }
       const rl = meter.rateLimitLine();
       if (rl) log(rl);
@@ -246,30 +247,26 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
         raw: snapshot.raw,
       });
       for (const w of quota.update(snapshot)) alert(w);
-      if (guard) onBudget(guard.onQuota(snapshot), guard.blindSpots([], snapshot));
+      if (guard) onBudget(guard.onQuota(snapshot), []);
     },
   });
 
-  // Enforce action-type policy through the agent's PreToolUse hook (②). Only
-  // the agent can stop a tool it is about to run — the proxy never sees the
-  // execution. Agents without a hook mechanism stay observe-only, said plainly.
-  // The Stop hook carries alerts into the chat.
-  let finalArgs = agentArgs;
-  const hookEnv: Record<string, string> = {};
+  // Enforce action-type policy through the agent's hook (②). Only the agent
+  // can stop a tool it is about to run — the proxy never sees the execution.
+  // A hook after each reply carries alerts into the chat.
+  const dir = sessionDir(cwd, sessionId);
   const enforcingRules = rules.filter((r) => r.level === "ask" || r.level === "deny");
   const enforce = needsEnforcement(effectivePolicy) || enforcingRules.length > 0 || guard !== null;
-  if (enforce && !adapter.enforcementArgs) {
-    log(`policy or budget needs enforcement, but ${adapter.id} exposes no hook mechanism — observe-only`);
-  }
+
+  // What the hook needs, as environment variables for hooks that inherit the
+  // agent's environment and as a file named in the hook command for those
+  // that do not (see src/agents/hooks.ts).
+  const hookEnv: HookConfig = {};
   if (outbox) {
     hookEnv.VANTAGE_OUTBOX_FILE = outbox;
-    hookEnv.VANTAGE_INFLIGHT_FILE = inflightPath(sessionDir(cwd, sessionId));
+    hookEnv.VANTAGE_INFLIGHT_FILE = inflightPath(dir);
   }
-  if ((enforce || chatAlerts) && adapter.enforcementArgs) {
-    const settingsFile = writeHookSettings(cwd, sessionId, entry, { preToolUse: enforce, stop: chatAlerts });
-    finalArgs = [...adapter.enforcementArgs(settingsFile), ...finalArgs];
-  }
-  if (enforce && adapter.enforcementArgs) {
+  if (enforce) {
     // Pass the resolved policy explicitly: the hook runs with the agent's cwd
     // (a worktree under --isolate), which may not hold .vantage/policy.json.
     hookEnv.VANTAGE_POLICY = policyToEnv(effectivePolicy);
@@ -279,29 +276,51 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
       .filter(([, l]) => l === "ask" || l === "deny")
       .map(([t, l]) => `${t}:${l}`)
       .join(" ");
-    if (enforced) log(`enforcing policy via ${adapter.id} PreToolUse hook — ${enforced}`);
+    if (enforced) log(`enforcing policy via ${adapter.name}'s hook — ${enforced}`);
     if (enforcingRules.length) log(`enforcing ${enforcingRules.length} file/command rule(s) from .vantage/policy.json`);
     // The hook records what it blocks or asks about, so watch and replay
     // can show it next to the calls that went through.
     hookEnv.VANTAGE_EVENTS_FILE = eventLog.filePath;
     if (guard) {
-      hookEnv.VANTAGE_BUDGET_FILE = budgetStatePath(sessionDir(cwd, sessionId));
-      hookEnv.VANTAGE_INFLIGHT_FILE = inflightPath(sessionDir(cwd, sessionId));
+      hookEnv.VANTAGE_BUDGET_FILE = budgetStatePath(dir);
+      hookEnv.VANTAGE_INFLIGHT_FILE = inflightPath(dir);
       log(`budget: every action needs approval once ${formatBudget(budget)} is reached`);
     }
   }
 
-  // Inject compiled project memory via the agent's native mechanism (⑤).
-  if (useMemory && adapter.contextArgs) {
-    const memory = compileMemory(cwd);
-    const extra = memory ? adapter.contextArgs(memory) : null;
-    if (memory && extra) {
-      finalArgs = [...extra, ...finalArgs];
-      log(`injected project memory (${memory.length} chars) via ${adapter.id}`);
-    }
+  // Project memory, through the agent's own mechanism (⑤).
+  const memory = useMemory ? compileMemory(cwd) || null : null;
+  const memoryFile = path.join(dir, "memory.md");
+  if (memory) {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(memoryFile, memory);
+    hookEnv.VANTAGE_MEMORY_FILE = memoryFile;
   }
 
-  log(`session ${sessionId} · agent ${adapter.id} · upstream ${upstream} (${proxy.via})`);
+  const hookConfigFile = path.join(dir, "hook-config.json");
+  writeHookConfig(hookConfigFile, hookEnv);
+  const plan = adapter.prepare({
+    proxyUrl: proxy.url,
+    sessionDir: dir,
+    hook: hookInvocation(process.execPath, entry, [adapter.key, hookConfigFile]),
+    enforce,
+    chatAlerts,
+    memory,
+    memoryFile,
+    cwd: childCwd,
+    env: process.env,
+    policy: effectivePolicy,
+    rules,
+    args: agentArgs,
+  });
+  const finalArgs = [...plan.args, ...agentArgs];
+  for (const note of plan.notes) log(note);
+
+  if (memory && plan.memory) log(`injected project memory (${memory.length} chars) via ${adapter.name}`);
+
+  const all = [...new Set(routes.map((r) => (typeof r.upstream === "string" ? r.upstream : `${r.prefix} (per request)`)))];
+  const upstreams = all.length > 3 ? `${all.slice(0, 2).join(", ")} and ${all.length - 2} more` : all.join(", ");
+  log(`session ${sessionId} · agent ${adapter.name} · upstream ${upstreams} (${proxy.via})`);
   log(`proxy ${proxy.url} → ${adapter.command}`);
 
   // A launch that never gets going must still end its session — otherwise
@@ -351,8 +370,8 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
   if (interactive) {
     log(
       chatAlerts
-        ? "live view: run `vantage watch` in a second terminal — alerts appear in Claude Code's chat"
-        : "live view: run `vantage watch` in a second terminal — Vantage stays quiet here until Claude Code exits"
+        ? `live view: run \`vantage watch\` in a second terminal — alerts appear in ${adapter.name}'s chat`
+        : `live view: run \`vantage watch\` in a second terminal — Vantage stays quiet here until ${adapter.name} exits`
     );
     terminal.hold();
   }
@@ -360,7 +379,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
   const child = spawn(target.resolved.command, [...target.resolved.prefix, ...finalArgs], {
     cwd: childCwd,
     stdio: "inherit",
-    env: { ...process.env, ...adapter.proxyEnv(proxy.url), ...hookEnv },
+    env: { ...process.env, ...plan.env, ...hookEnv },
   });
 
   const forward = (sig: NodeJS.Signals) => () => child.kill(sig);
@@ -458,17 +477,6 @@ function printIsolatedChanges(sessionId: string, worktree: Worktree, diff: Sessi
   log(`review:  vantage review ${sessionId}`);
   log(`merge:   git merge --no-ff ${worktree.branch}`);
   log(`discard: vantage discard ${sessionId}`);
-}
-
-// Write a session-scoped settings file registering the PreToolUse hook.
-// Claude Code merges --settings with the user's own settings and combines list
-// keys, so this adds our hook without disturbing theirs.
-function writeHookSettings(cwd: string, sessionId: string, entry: string, events: { preToolUse: boolean; stop: boolean }): string {
-  const file = path.join(sessionDir(cwd, sessionId), "hook-settings.json");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const inv = hookInvocation(process.execPath, entry);
-  fs.writeFileSync(file, JSON.stringify(hookSettings(inv, events), null, 2));
-  return file;
 }
 
 function policyToEnv(policy: Policy): string {
