@@ -14,9 +14,9 @@
   <a href="https://nodejs.org"><img alt="Node.js 22.6+" src="https://img.shields.io/badge/node-%E2%89%A522.6-brightgreen"></a>
 </p>
 
-Vantage is a free, open-source cost and usage monitor, guardrail and session log for coding agents: [Claude Code](https://code.claude.com/docs), Codex, GitHub Copilot CLI, Gemini CLI, OpenCode, pi, Hermes Agent, Cursor CLI and Antigravity CLI. Start your agent with `vantage run claude` (or `codex`, `gemini`, …) and work as usual: Vantage shows what the session costs and how much of your limit is left, asks before the agent touches the files and commands you care about, warns you when a secret is sent to the API, and records everything so you can look back.
+Vantage is a free, open-source cost and usage monitor, guardrail and session log for coding agents: [Claude Code](https://code.claude.com/docs), Codex, GitHub Copilot CLI, OpenCode and pi. Start your agent with `vantage run claude` (or `codex`, `copilot`, …) and work as usual: Vantage shows what the session costs and how much of your limit is left, asks before the agent touches the files and commands you care about, warns you when a secret is sent to the API, and records everything so you can look back.
 
-**Everything stays on your machine.** Vantage sends no telemetry and changes nothing in your agent's setup — except where you ask it to with `vantage setup` (see [Supported agents](#supported-agents)). The only request it makes on its own is `vantage pricing update`, and only when you run it.
+**Everything stays on your machine.** Vantage sends no telemetry and changes nothing in your agent's setup. The only request it makes on its own is `vantage pricing update`, and only when you run it.
 
 ## Why
 
@@ -47,30 +47,25 @@ Needs Node.js 22.6 or newer and at least one of the agents below, installed and 
 ## Quick start
 
 ```bash
-vantage doctor          # check the setup once: which agents are there, what they need
+vantage doctor          # check the setup once: which agents are there
 vantage policy init     # optional: recommended rules, e.g. ask before reading .env
-vantage run claude      # use this instead of `claude` — or codex, copilot, gemini, …
+vantage run claude      # use this instead of `claude` — or codex, copilot, opencode, pi
 vantage watch           # live view, in a second terminal
 ```
 
 ## Supported agents
 
-| Agent | Start with | Tokens and cost | Usage limits | Rules that ask | Alerts in its chat | One-time setup |
-| --- | --- | --- | --- | --- | --- | --- |
-| Claude Code | `vantage run claude` | yes | 5-hour and weekly | ask | yes | – |
-| Codex | `vantage run codex` | yes | 5-hour and weekly (ChatGPT plan) | block instead | yes | – |
-| Copilot CLI | `vantage run copilot` | yes | – | ask | yes | – |
-| Gemini CLI | `vantage run gemini` | yes | – | ask | yes | `vantage setup gemini` |
-| OpenCode | `vantage run opencode` | yes | – | block instead | as a toast | – |
-| pi | `vantage run pi` | yes | – | ask | as a notification | – |
-| Hermes Agent | `vantage run hermes` | yes | – | ask (newest Hermes) | – | `vantage setup hermes` |
-| Cursor CLI | `vantage run cursor` | – | – | ask | – | `vantage setup cursor` |
-| Antigravity CLI | `vantage run antigravity` | with a Gemini API key | – | ask | – | `vantage setup antigravity` |
+| Agent | Start with | Tokens and cost | Usage limits | Rules that ask | Alerts in its chat |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code | `vantage run claude` | yes | 5-hour and weekly | ask | yes |
+| Codex | `vantage run codex` | yes | 5-hour and weekly (ChatGPT plan) | block instead | yes |
+| Copilot CLI | `vantage run copilot` | yes | – | ask | yes |
+| OpenCode | `vantage run opencode` | yes | – | block instead | as a toast |
+| pi | `vantage run pi` | yes | – | ask | as a notification |
 
-- **Tokens and cost:** the cost is shown for Claude, GPT and Gemini models, whichever agent calls them; for other models (DeepSeek or Mistral through OpenCode, say) Vantage counts the tokens and says the price is unknown (see [Prices](#prices)). Cursor talks to its own servers in a protocol of its own, so its usage cannot be read.
+- **Tokens and cost:** the cost is shown for Claude, GPT and Gemini models, whichever agent calls them; for other models (DeepSeek or Mistral through OpenCode, say) Vantage counts the tokens and says the price is unknown (see [Prices](#prices)).
 - **Rules that ask:** Codex and OpenCode can block a tool call from a hook but not pause to ask. There a rule set to `ask` blocks the action, and the agent is told to leave it to you. `deny` works everywhere.
-- **One-time setup:** Gemini CLI, Hermes, Cursor and Antigravity take hooks only from their own settings. `vantage setup <agent>` adds Vantage's hook there once, next to your own hooks; outside a Vantage session it does nothing. `vantage doctor` shows whether it is in place.
-- **Tested** against the real CLIs of Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode, pi and Hermes ([`scripts/e2e-agents.ts`](scripts/e2e-agents.ts)). Cursor and Antigravity follow their documented hook format and have not been run against the real CLIs yet — reports are welcome.
+- **Tested** against the real CLIs of all five ([`scripts/e2e-agents.ts`](scripts/e2e-agents.ts)).
 
 ## Guide
 
@@ -149,7 +144,7 @@ The starter rules ask before `.env` files, `git push --force`, `git reset --hard
 }
 ```
 
-- **Action types:** `read` (reading and searching files), `write` (editing and creating them, patches), `shell` (commands), `network` (web fetches and searches, MCP tools) and `other`. Each agent's tools are sorted into these by name — Claude Code's `Bash`, Codex's `exec_command`, Gemini CLI's `run_shell_command` and Hermes's `terminal` are all `shell`.
+- **Action types:** `read` (reading and searching files), `write` (editing and creating them, patches), `shell` (commands), `network` (web fetches and searches, MCP tools) and `other`. Each agent's tools are sorted into these by name — Claude Code's `Bash`, Codex's `exec_command` and OpenCode's `bash` are all `shell`.
 - **Levels:** `allow` (Vantage stays out), `warn` (a note in the chat), `ask` (the agent asks you before the action) and `deny` (blocked; the agent is told why). Where an agent cannot ask, `ask` blocks (see [Supported agents](#supported-agents)).
 - **File and command rules** override the action type when they match, and the strictest match wins. So `"shell": "ask"` together with `"npm test*": "allow"` lets tests run without asking and asks before every other command.
 
@@ -221,7 +216,7 @@ vantage discard <id>                       # or throw it away
 
 ### Project memory
 
-Agents forget everything between sessions. Project memory is a few Markdown files that Vantage gives to the agent at the start of every session — Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode and pi take it:
+Agents forget everything between sessions. Project memory is a few Markdown files that Vantage gives to the agent at the start of every session — all five agents take it:
 
 ```bash
 vantage memory init                                   # creates .vantage/memory/: architecture, conventions, decisions, glossary
@@ -239,16 +234,15 @@ The cost is an estimate: the tokens of each request at the model maker's officia
 - **Claude models** at [Anthropic's price list](https://platform.claude.com/docs/en/about-claude/pricing), **GPT models** at [OpenAI's](https://developers.openai.com/api/docs/pricing), **Gemini models** at [Google's](https://ai.google.dev/gemini-api/docs/pricing) — whichever agent calls them. Copilot's `claude-sonnet-4.6` and OpenCode's `anthropic/claude-sonnet-4-6` are the same model at the same price.
 - **Standard prices**: batch, flex and priority rates are not used. Where a price depends on the prompt size (OpenAI's long-context rates above 272K tokens, Google's above 200K), the request is priced by its own size. A price change the page announces for a later day applies from that day on.
 - **Other models** (DeepSeek, Mistral, local models, …): Vantage counts the tokens and shows the cost as unknown rather than guessing.
-- **On a subscription** (Claude Pro or Max, ChatGPT, Copilot, Gemini Code Assist) you do not pay per token: the cost is what the same use would cost on the API, and the quota bars are what counts.
+- **On a subscription** (Claude Pro or Max, ChatGPT, Copilot) you do not pay per token: the cost is what the same use would cost on the API, and the quota bars are what counts.
 
 A copy of the three price lists ships with Vantage and is updated with each release. `vantage pricing` shows the prices in use and their date (`vantage pricing openai` one list), and `vantage pricing update` fetches the current official lists. Vantage never fetches anything unless you run that command.
 
 ### Troubleshooting
 
-- **Start with `vantage doctor`.** It checks Node.js, every agent it knows (installed or not, and whether a one-time setup is missing), the approval hook, git, your rules file and the price list, and says what to do about anything that fails. `vantage doctor codex` checks one agent.
+- **Start with `vantage doctor`.** It checks Node.js, every agent it knows (installed or not), the approval hook, git, your rules file and the price list, and says what to do about anything that fails. `vantage doctor codex` checks one agent.
 - **"… not found":** set `VANTAGE_AGENT_PATH` to the agent's executable, for example `$env:VANTAGE_AGENT_PATH = "C:\path\to\claude.exe"` in PowerShell.
 - **Copilot CLI fails under Vantage:** Vantage sends its requests to `https://api.githubcopilot.com`. If your plan uses another address, set it with `VANTAGE_UPSTREAM`.
-- **Rules do nothing with Gemini CLI, Hermes, Cursor or Antigravity:** run `vantage setup <agent>` once; `vantage doctor` says whether it is needed.
 - **No change summary:** the folder is not a git repository, or it has more than 2000 untracked files — add build output and dependencies to `.gitignore`.
 - **A rule does not apply:** `vantage policy` shows the rules as Vantage reads them; a file that is not valid JSON is ignored, and `vantage doctor` says so.
 - **Numbers look wrong:** `VANTAGE_DEBUG=1 vantage run claude` logs what the API returns, including the format it was read as and the rate-limit headers.
@@ -258,8 +252,7 @@ A copy of the three price lists ships with Vantage and is updated with each rele
 
 | Command | Description |
 | --- | --- |
-| `vantage run [options] <agent> [-- args]` | Start an agent through Vantage: `claude`, `codex`, `copilot`, `gemini`, `opencode`, `pi`, `hermes`, `cursor`, `antigravity` |
-| `vantage setup <agent>` | Add Vantage's hook once to the settings of Gemini CLI, Hermes, Cursor or Antigravity |
+| `vantage run [options] <agent> [-- args]` | Start an agent through Vantage: `claude`, `codex`, `copilot`, `opencode`, `pi` |
 | `vantage watch [id]` | Live view: all running sessions side by side, or one in detail |
 | `vantage sessions` | List past sessions |
 | `vantage sessions prune [--older-than 30d] [--all] [--yes]` | Delete old sessions (lists them first; `--yes` deletes) |
@@ -297,7 +290,7 @@ Environment variables:
 
 ### How it works
 
-`vantage run` starts the agent with its provider's address pointing at a local proxy — `ANTHROPIC_BASE_URL` for Claude Code, `openai_base_url` for Codex, `COPILOT_API_URL` for Copilot CLI, and so on. The proxy forwards every request unchanged, WebSockets included, and reads token usage and rate-limit headers from the responses; it understands the Anthropic, OpenAI (Responses and Chat Completions) and Gemini APIs. Approvals and budgets go through each agent's own hooks, because tools run inside the agent and never pass the proxy: for one session on the command line or in a session folder where the agent allows it, once in its settings (`vantage setup`) where it does not. One `vantage hook` command speaks every agent's hook format; alerts reach the chat through the hook that runs after each reply.
+`vantage run` starts the agent with its provider's address pointing at a local proxy — `ANTHROPIC_BASE_URL` for Claude Code, `openai_base_url` for Codex, `COPILOT_API_URL` for Copilot CLI, and so on. The proxy forwards every request unchanged, WebSockets included, and reads token usage and rate-limit headers from the responses; it understands the Anthropic, OpenAI (Responses and Chat Completions) and Gemini APIs. Approvals and budgets go through each agent's own hooks, because tools run inside the agent and never pass the proxy; Vantage passes them for one session, on the command line or in the session's own folder. One `vantage hook` command speaks every agent's hook format; alerts reach the chat through the hook that runs after each reply.
 
 Each session is recorded in the project's `.vantage/sessions/`, including excerpts of prompts and replies; Vantage keeps that folder out of git with its own `.vantage/.gitignore`, so rules and project memory can still be committed. The price list and the index that `watch`, `stats` and `search` use across projects are kept in `~/.vantage`.
 
@@ -309,9 +302,9 @@ Each session is recorded in the project's `.vantage/sessions/`, including excerp
 
 **Does it slow the agent down?** The proxy streams responses through as they arrive, without buffering. When rules or a budget are active, each tool call is checked by a short-lived process (about a tenth of a second); in the interactive chat, one also runs after each reply to show alerts.
 
-**Does it change my agent's setup?** For Claude Code, Codex, Copilot CLI, OpenCode and pi, no: hooks and memory are passed to each session on the command line or in the session's own folder, your settings files stay untouched, and your own hooks keep working. Gemini CLI, Hermes, Cursor and Antigravity only take hooks from their settings, so `vantage setup` adds one entry there — only when you run it, next to your own hooks.
+**Does it change my agent's setup?** No: hooks and memory are passed to each session on the command line or in the session's own folder, your settings files stay untouched, and your own hooks keep working.
 
-**Which agents does it support?** Claude Code, Codex, GitHub Copilot CLI, Gemini CLI, OpenCode, pi, Hermes Agent, Cursor CLI and Antigravity CLI — see [Supported agents](#supported-agents) for what works with each.
+**Which agents does it support?** Claude Code, Codex, GitHub Copilot CLI, OpenCode and pi — see [Supported agents](#supported-agents) for what works with each.
 
 **How do I remove it?** `npm uninstall -g @jovan158/vantage`. To remove its data as well, delete `~/.vantage` and the `.vantage` folders in your projects.
 

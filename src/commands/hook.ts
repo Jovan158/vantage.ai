@@ -11,12 +11,8 @@ import { loadRules, policyFilePath } from "../rules.ts";
 import { readBudgetState, waitForMetering } from "../budget.ts";
 import { takeAlerts, chatText } from "../outbox.ts";
 import { toolTarget } from "../turn.ts";
-import { findActiveConfig, hookProtocol, readHookConfig, type HookAnswer } from "../agents/hooks.ts";
+import { hookProtocol, readHookConfig, type HookAnswer } from "../agents/hooks.ts";
 import type { DecisionEvent } from "../events.ts";
-
-// Agents whose hook is set up once in the user's settings: outside a Vantage
-// session their hook finds no session and stays out of the way.
-const SETUP_AGENTS = new Set(["gemini", "cursor", "hermes", "antigravity"]);
 
 export async function cmdHook(args: string[] = []): Promise<number> {
   const agent = args[0];
@@ -26,15 +22,9 @@ export async function cmdHook(args: string[] = []): Promise<number> {
   const raw = Buffer.concat(chunks).toString("utf8");
   const call = protocol.parse(raw);
 
-  // The session's settings: named by the hook command, by the environment,
-  // or — for a hook set up once — found by the directory the agent works in.
-  // The environment counts only for the agent it was set for: a Gemini CLI
-  // started from inside a Cursor session is not that session.
-  const fromEnv = process.env.VANTAGE_HOOK_AGENT === agent ? process.env.VANTAGE_HOOK_CONFIG : undefined;
-  const configFile =
-    args[1] ?? fromEnv ?? (agent && SETUP_AGENTS.has(agent) ? findActiveConfig(agent, [...(call?.dirs ?? []), process.cwd()]) : null) ?? undefined;
-  const config = readHookConfig(configFile);
-  if (!config && agent && SETUP_AGENTS.has(agent)) return 0; // not a Vantage session
+  // The session's settings, named by the hook command (Claude Code's hook
+  // may also get them from the environment).
+  const config = readHookConfig(args[1]);
   if (config) Object.assign(process.env, config);
   if (!call) return 0; // unreadable input never blocks work
 
@@ -65,7 +55,7 @@ export async function cmdHook(args: string[] = []): Promise<number> {
     // decide() never allows: Vantage only narrows what the agent permits.
     answer.decision = v.decision === "allow" ? null : v.decision;
     answer.reason = v.reason;
-    if (v.decision === "ask" && (protocol.ask === "none" || process.env.VANTAGE_ASK_MODE === "block")) {
+    if (v.decision === "ask" && protocol.ask === "none") {
       answer.decision = "deny";
       answer.reason = `${v.reason} This agent cannot pause to ask, so the action was not run: tell the user what you wanted to do, so they can do it themselves or change the rule.`;
     }

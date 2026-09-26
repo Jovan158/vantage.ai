@@ -11,7 +11,7 @@ import crypto from "node:crypto";
 import net from "node:net";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { hookProtocol, registerActive, findActiveConfig, writeHookConfig } from "../src/agents/hooks.ts";
+import { hookProtocol, writeHookConfig } from "../src/agents/hooks.ts";
 import { codexHookHash, codexHookKey, codexHooksToml } from "../src/agents/codex.ts";
 import { matchRoute, startProxy } from "../src/proxy.ts";
 import { WsReader, wsFrame } from "../src/ws.ts";
@@ -50,49 +50,19 @@ test("Claude's dialect, which Codex, Copilot, OpenCode and pi share", () => {
   assert.equal(hookProtocol("copilot").reply(stop, { decision: null, reason: "", alerts: "Vantage: a\nVantage: b" }).stdout, '{"type":"progress","message":"Vantage: a"}\n{"type":"progress","message":"Vantage: b"}');
 });
 
-test("Gemini CLI: BeforeTool gets decision and reason, AfterAgent shows alerts", () => {
-  const p = hookProtocol("gemini");
-  const call = p.parse(JSON.stringify({ hook_event_name: "BeforeTool", tool_name: "run_shell_command", tool_input: { command: "rm -rf x" }, cwd: "/r" }))!;
-  assert.equal(call.tool, "run_shell_command");
-  const ask = JSON.parse(p.reply(call, { decision: "ask", reason: "check", alerts: "" }).stdout);
-  assert.deepEqual(ask, { decision: "ask", reason: "check", systemMessage: "check" });
-  const after = p.parse(JSON.stringify({ hook_event_name: "AfterAgent", prompt: "x" }))!;
-  assert.equal(after.event, "stop");
-});
-
-test("Cursor, Hermes and Antigravity each answer in their own words", () => {
-  const cursor = hookProtocol("cursor");
-  const c = cursor.parse(JSON.stringify({ hook_event_name: "preToolUse", tool_name: "Shell", tool_input: { command: "ls" }, workspace_roots: ["/w"] }))!;
-  assert.deepEqual(c.dirs, ["/w"]);
-  assert.deepEqual(JSON.parse(cursor.reply(c, { decision: "ask", reason: "r", alerts: "" }).stdout), { permission: "ask", user_message: "r", agent_message: "r" });
-  const legacy = cursor.parse(JSON.stringify({ hook_event_name: "beforeShellExecution", command: "npm publish", cwd: "/w" }))!;
-  assert.deepEqual([legacy.tool, legacy.input], ["Shell", { command: "npm publish" }]);
-
-  const hermes = hookProtocol("hermes");
-  const h = hermes.parse(JSON.stringify({ hook_event_name: "pre_tool_call", tool_name: "terminal", tool_input: { command: "ls" }, cwd: "/w" }))!;
-  assert.deepEqual(JSON.parse(hermes.reply(h, answer).stdout), { decision: "block", reason: "no" });
-  assert.deepEqual(JSON.parse(hermes.reply(h, { decision: "ask", reason: "r", alerts: "" }).stdout), { action: "approve", message: "r" });
-
-  const agy = hookProtocol("antigravity");
-  const a = agy.parse(JSON.stringify({ toolCall: { name: "run_command", args: { CommandLine: "ls" } } }))!;
-  assert.equal(a.tool, "run_command");
-  assert.deepEqual(JSON.parse(agy.reply(a, answer).stdout), { decision: "deny", reason: "no" });
-  assert.equal(agy.reply(a, { decision: null, reason: "", alerts: "" }).stdout, "");
-});
-
 test("other agents' tool names get the right action type", () => {
   const cases: Array<[string, string]> = [
-    ["run_shell_command", "shell"],
-    ["read_file", "read"],
-    ["replace", "write"],
-    ["write_file", "write"],
-    ["google_web_search", "network"],
+    ["exec_command", "shell"], // Codex
+    ["shell", "shell"],
     ["apply_patch", "write"],
-    ["terminal", "shell"],
-    ["mcp__terminal", "shell"], // Hermes, to Claude models
-    ["mcp__github__create_issue", "network"],
-    ["ls", "read"],
+    ["bash", "shell"], // OpenCode, pi
+    ["read", "read"],
+    ["edit", "write"],
+    ["write", "write"],
     ["webfetch", "network"],
+    ["codesearch", "network"],
+    ["ls", "read"],
+    ["mcp__github__create_issue", "network"],
   ];
   for (const [tool, type] of cases) assert.equal(classifyTool(tool), type, tool);
 });
@@ -276,7 +246,7 @@ test("one proxy, several providers: each route reaches its own upstream and form
 
 function runHook(args: string[], payload: object, env: Record<string, string> = {}): { status: number | null; stdout: string } {
   const inv = hookInvocation(process.execPath, ENTRY, args);
-  const r = spawnSync(inv.command, inv.args, { input: JSON.stringify(payload), encoding: "utf8", env: { ...process.env, VANTAGE_POLICY: "", VANTAGE_HOOK_CONFIG: "", VANTAGE_HOOK_AGENT: "", ...env } });
+  const r = spawnSync(inv.command, inv.args, { input: JSON.stringify(payload), encoding: "utf8", env: { ...process.env, VANTAGE_POLICY: "", ...env } });
   return { status: r.status, stdout: r.stdout };
 }
 
@@ -289,29 +259,4 @@ test("Codex: an ask rule blocks, and says the user has to do it", () => {
   assert.equal(out.permissionDecision, "deny");
   assert.match(out.permissionDecisionReason, /cannot pause to ask/);
   fs.rmSync(dir, { recursive: true, force: true });
-});
-
-test("a hook set up once stays out of the way outside a session, and finds the one running", () => {
-  const home = tmp("vantage-home-");
-  const project = tmp("vantage-proj-");
-  const env = { VANTAGE_HOME: home };
-  const call = { hook_event_name: "preToolUse", tool_name: "Shell", tool_input: { command: "rm -rf build" }, workspace_roots: [project] };
-  // No session: an empty answer, whatever the policy would say.
-  assert.equal(runHook(["cursor"], call, { ...env, VANTAGE_POLICY: "shell:deny" }).stdout, "");
-  const cfg = path.join(project, "hook-config.json");
-  writeHookConfig(cfg, { VANTAGE_POLICY: "shell:deny", VANTAGE_POLICY_FILE: path.join(project, "none.json") });
-  process.env.VANTAGE_HOME = home;
-  const unregister = registerActive("cursor", [project], cfg);
-  try {
-    assert.equal(findActiveConfig("cursor", [path.join(project, "src")]), cfg, "found from a subdirectory too");
-    assert.equal(JSON.parse(runHook(["cursor"], call, env).stdout).permission, "deny");
-    // The environment counts only for the agent it was set for.
-    assert.equal(runHook(["gemini"], { hook_event_name: "BeforeTool", tool_name: "run_shell_command", tool_input: { command: "ls" } }, { ...env, VANTAGE_HOOK_CONFIG: cfg, VANTAGE_HOOK_AGENT: "cursor" }).stdout, "");
-  } finally {
-    unregister();
-    delete process.env.VANTAGE_HOME;
-  }
-  assert.equal(findActiveConfig("cursor", [project]), null, "gone once the session ends");
-  fs.rmSync(home, { recursive: true, force: true });
-  fs.rmSync(project, { recursive: true, force: true });
 });

@@ -16,8 +16,7 @@ import { compileMemory } from "../memory.ts";
 import { loadPolicy, PolicyWatcher, needsEnforcement, type Policy } from "../policy.ts";
 import { loadRules, policyFilePath } from "../rules.ts";
 import { hookInvocation } from "../hook.ts";
-import { registerActive, writeHookConfig, type HookConfig } from "../agents/hooks.ts";
-import { setupState } from "../setup.ts";
+import { writeHookConfig, type HookConfig } from "../agents/hooks.ts";
 import { outboxPath, postAlert, takeAlerts } from "../outbox.ts";
 import type { QuotaWarning } from "../ratelimit.ts";
 import { resolveCommand } from "../resolve.ts";
@@ -204,7 +203,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
   });
   recordLastSession({ cwd, sessionId });
 
-  // An agent whose API traffic cannot be read (Cursor) runs without a proxy.
+  // An agent whose API traffic cannot be read would run without a proxy.
   const proxy: RunningProxy | null = routes.length === 0 ? null : await startProxy({
     routes,
     agentName: adapter.name,
@@ -321,24 +320,10 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
     rules,
     args: agentArgs,
   });
-  if (plan.hookConfig) writeHookConfig(hookConfigFile, { ...hookEnv, ...plan.hookConfig });
   const finalArgs = [...plan.args, ...agentArgs];
   for (const note of plan.notes) log(note);
 
-  // An agent whose hook is set up once finds this session by its directory.
-  let unregister = (): void => {};
-  let hooked = true;
-  if (adapter.capabilities.setup && (enforce || outbox || memory)) {
-    hooked = setupState(adapter.key, entry).installed;
-    if (hooked) {
-      unregister = registerActive(adapter.key, [cwd, childCwd], hookConfigFile);
-      // Also by environment, for hooks that inherit the agent's.
-      plan.env.VANTAGE_HOOK_CONFIG = hookConfigFile;
-      plan.env.VANTAGE_HOOK_AGENT = adapter.key;
-    }
-    else log(`${adapter.name}'s hook is not set up, so rules, budgets, chat alerts and memory are off — run once: vantage setup ${adapter.key}`);
-  }
-  if (memory && plan.memory && hooked) log(`injected project memory (${memory.length} chars) via ${adapter.name}`);
+  if (memory && plan.memory) log(`injected project memory (${memory.length} chars) via ${adapter.name}`);
 
   if (proxy) {
     const all = [...new Set(routes.map((r) => (typeof r.upstream === "string" ? r.upstream : `${r.prefix} (per request)`)))];
@@ -367,7 +352,6 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
     log(`could not launch ${adapter.command}: ${reason}`);
     eventLog.append({ ts: new Date().toISOString(), type: "session_end", exitCode: 127 });
     if (worktree) removeSessionWorktree(cwd, worktree.path, worktree.branch);
-    unregister();
     await proxy?.close();
     return 127;
   };
@@ -422,7 +406,6 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
       void failLaunch(reason).then(resolve);
     });
     child.on("exit", async (code) => {
-      unregister();
       releaseTerminal();
 
       // What changed: the isolation branch, or the working tree since start.

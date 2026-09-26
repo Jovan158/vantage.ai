@@ -20,7 +20,6 @@ import { cmdPolicy } from "./commands/policy.ts";
 import { cmdPricing } from "./commands/pricing.ts";
 import { cmdMemory } from "./commands/memory.ts";
 import { cmdDemo } from "./commands/demo.ts";
-import { cmdSetup } from "./commands/setup.ts";
 
 const ENTRY = fileURLToPath(import.meta.url);
 
@@ -44,7 +43,6 @@ function printHelp(withLogo = true): void {
       `  vantage memory <init|show|add <category> <text>>\n` +
       `  vantage policy [init]\n` +
       `  vantage pricing [show|update|check] [anthropic|openai|google]\n` +
-      `  vantage setup <agent>\n` +
       `  vantage doctor [agent]\n` +
       `  vantage demo\n` +
       `  vantage --help\n\n` +
@@ -56,8 +54,6 @@ function printHelp(withLogo = true): void {
       `--max-cost 2 / --max-quota 80 set a budget: once the session's estimated\n` +
       `cost reaches $2, or a subscription quota window 80%, every action needs\n` +
       `your approval. Also settable as VANTAGE_MAX_COST / VANTAGE_MAX_QUOTA.\n\n` +
-      `Gemini CLI, Hermes, Cursor and Antigravity take hooks only from their own\n` +
-      `settings: \`vantage setup <agent>\` adds Vantage's there once.\n\n` +
       `VANTAGE_AGENT_PATH=<path> starts the agent from that executable instead of\n` +
       `looking it up on PATH.\n\n` +
       `Prices come from Anthropic's, OpenAI's and Google's official lists: a copy\n` +
@@ -80,7 +76,6 @@ const COMMANDS: Record<string, (argv: string[]) => Promise<number>> = {
   policy: cmdPolicy,
   pricing: cmdPricing,
   hook: (argv) => cmdHook(argv),
-  setup: (argv) => cmdSetup(argv, ENTRY),
   doctor: (argv) => cmdDoctor(argv, ENTRY),
   demo: () => cmdDemo(),
 };

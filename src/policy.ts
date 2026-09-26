@@ -48,9 +48,6 @@ export function classifyTool(name: string): ActionType {
   const known = TOOL_TYPES[name];
   if (known) return known;
   const n = name.toLowerCase();
-  // Hermes presents its own tools to Claude models as mcp__terminal, … —
-  // one segment, where a real MCP tool is mcp__<server>__<tool>.
-  if (n.startsWith("mcp__") && !n.slice(5).includes("__")) return classifyTool(name.slice(5));
   if (n.startsWith("mcp__")) return "network"; // MCP tools reach external services
   if (/(write|edit|create|delete|remove|move|rename|patch|apply|replace|insert|save)/.test(n)) return "write";
   if (/(fetch|http|url|web|curl|request|download|upload|browser)/.test(n)) return "network";

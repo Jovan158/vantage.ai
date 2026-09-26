@@ -39,7 +39,7 @@ test("a VANTAGE_AGENT_PATH that does not exist fails clearly and ends the sessio
 
 test("agents are named as users type them; `claude-code` still works but is not advertised", async () => {
   const { resolveAdapter, knownAgents } = await import("../src/agents/index.ts");
-  assert.deepEqual(knownAgents(), ["claude", "codex", "copilot", "gemini", "opencode", "pi", "hermes", "cursor", "antigravity"]);
+  assert.deepEqual(knownAgents(), ["claude", "codex", "copilot", "opencode", "pi"]);
   assert.equal(resolveAdapter("claude-code"), resolveAdapter("claude"));
   assert.equal(resolveAdapter("claude")?.id, "claude-code");
   assert.equal(resolveAdapter("aider"), undefined);

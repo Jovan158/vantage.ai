@@ -14,7 +14,6 @@ import { loadRules, policyFilePath } from "./rules.ts";
 import { activePrices, STALE_AFTER_DAYS } from "./pricing.ts";
 import { vantageHome, knownSessions, sessionRunning } from "./home.ts";
 import { AGENTS, type AgentAdapter } from "./agents/index.ts";
-import { setupState } from "./setup.ts";
 
 export type CheckLevel = "ok" | "warn" | "fail" | "info";
 
@@ -73,18 +72,7 @@ export function checkAgent(adapter: AgentAdapter, opts: DoctorOptions, required 
   // Agents print their version in their own words; the number is enough.
   const line = firstLine(r.stdout);
   const version = /\d+\.\d+(?:\.\d+)?(?:[-+][\w.]+)?/.exec(line)?.[0] ?? line;
-  const setup = adapter.capabilities.setup ? checkSetup(adapter, opts) : null;
-  const check: Check = { level: "ok", text: `${adapter.name} ${version}${where}` };
-  if (setup) Object.assign(check, setup);
-  return check;
-}
-
-// An agent whose hook is set up once: is it, and for this Vantage?
-function checkSetup(adapter: AgentAdapter, opts: DoctorOptions): Partial<Check> | null {
-  const s = setupState(adapter.key, opts.entry);
-  if (!s.installed) return { level: "warn", hint: `its hook is not set up, so rules, budgets and alerts are off: vantage setup ${adapter.key}` };
-  if (s.stale) return { level: "warn", hint: `its hook runs another Vantage (moved or reinstalled): vantage setup ${adapter.key}` };
-  return null;
+  return { level: "ok", text: `${adapter.name} ${version}${where}` };
 }
 
 export function checkClaude(opts: DoctorOptions): Check {

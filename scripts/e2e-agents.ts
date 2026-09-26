@@ -29,7 +29,6 @@ interface Case {
   env(mock: string, home: string): Record<string, string>;
   /** Settings the agent needs in its home before it runs. */
   prepare?(home: string): void;
-  setup?: boolean;
 }
 
 const CASES: Case[] = [
@@ -53,17 +52,6 @@ const CASES: Case[] = [
     env: (mock, home) => ({ COPILOT_PROVIDER_BASE_URL: `${mock}/v1`, COPILOT_PROVIDER_API_KEY: "sk-e2e", COPILOT_MODEL: "gpt-5.5-mini", COPILOT_HOME: path.join(home, ".copilot"), COPILOT_AUTO_UPDATE: "false" }),
   },
   {
-    agent: "gemini",
-    command: "gemini",
-    args: ["-p", PROMPT, "--yolo"],
-    env: (mock) => ({ VANTAGE_UPSTREAM: mock, GEMINI_API_KEY: "AIza-e2e", GEMINI_CLI_TRUST_WORKSPACE: "true" }),
-    prepare: (home) => {
-      fs.mkdirSync(path.join(home, ".gemini"), { recursive: true });
-      fs.writeFileSync(path.join(home, ".gemini", "settings.json"), JSON.stringify({ security: { auth: { selectedType: "gemini-api-key" } } }));
-    },
-    setup: true,
-  },
-  {
     agent: "opencode",
     command: "opencode",
     args: ["run", "-m", "anthropic/claude-sonnet-4-5", PROMPT],
@@ -74,13 +62,6 @@ const CASES: Case[] = [
     command: "pi",
     args: ["-p", "--provider", "anthropic", "--model", "claude-sonnet-4-5", PROMPT],
     env: (mock) => ({ VANTAGE_UPSTREAM: mock, ANTHROPIC_API_KEY: "sk-ant-e2e" }),
-  },
-  {
-    agent: "hermes",
-    command: "hermes",
-    args: ["-z", PROMPT, "--provider", "anthropic", "-m", "claude-sonnet-4-5"],
-    env: (mock, home) => ({ VANTAGE_UPSTREAM: mock, ANTHROPIC_API_KEY: "sk-ant-e2e", HERMES_HOME: path.join(home, ".hermes") }),
-    setup: true,
   },
 ];
 
@@ -112,7 +93,6 @@ async function runCase(c: Case): Promise<string> {
           resolve({ status, stderr });
         });
       });
-    if (c.setup) await cli(["setup", c.agent]);
     const r = await cli(["run", c.agent, "--", ...c.args]);
     const sessions = path.join(project, ".vantage", "sessions");
     const dir = fs.existsSync(sessions) ? fs.readdirSync(sessions)[0] : undefined;

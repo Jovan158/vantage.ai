@@ -14,7 +14,7 @@ export const claudeCode: AgentAdapter = {
   short: "Claude",
   command: "claude",
   install: "npm install -g @anthropic-ai/claude-code",
-  capabilities: { meter: true, enforce: "ask", chatAlerts: true, setup: false },
+  capabilities: { meter: true, enforce: "ask", chatAlerts: true },
   routes: (env) => [{ prefix: "", upstream: env.VANTAGE_UPSTREAM ?? "https://api.anthropic.com" }],
   prepare(ctx) {
     const args: string[] = [];

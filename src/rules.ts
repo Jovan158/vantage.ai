@@ -136,7 +136,7 @@ function commandWords(command: string): string[] {
 }
 
 // Where agents name the file a call acts on (see TARGET_KEYS in turn.ts).
-const FILE_KEYS = ["file_path", "filePath", "notebook_path", "absolute_path", "target_file", "path"];
+const FILE_KEYS = ["file_path", "filePath", "notebook_path", "path"];
 
 export interface RuleMatch {
   rule: Rule;

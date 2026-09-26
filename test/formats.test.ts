@@ -123,7 +123,7 @@ test("Gemini stream: cumulative usage, thoughts billed as output, function calls
     ex,
     sse([
       { candidates: [{ content: { parts: [{ text: "thinking", thought: true }, { text: "Let me " }] } }], usageMetadata: { promptTokenCount: 900 } },
-      { candidates: [{ content: { parts: [{ text: "look." }, { functionCall: { name: "read_file", args: { absolute_path: "/p/src/a.ts" } } }] }, finishReason: "STOP" }] },
+      { candidates: [{ content: { parts: [{ text: "look." }, { functionCall: { name: "read_file", args: { path: "/p/src/a.ts" } } }] }, finishReason: "STOP" }] },
       { usageMetadata: { promptTokenCount: 900, cachedContentTokenCount: 600, candidatesTokenCount: 40, thoughtsTokenCount: 10 } },
     ])
   );

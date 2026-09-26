@@ -18,14 +18,11 @@ export interface ToolCall {
 const MAX_TARGET = 80;
 
 // Where agents put what a call acts on. Claude Code: file_path, command, url.
-// Others spell it their own way: filePath (OpenCode), absolute_path (Gemini
-// CLI), cmd (Codex), target_file (Cursor).
+// Others spell it their own way: filePath (OpenCode), cmd (Codex).
 const TARGET_KEYS = [
   "file_path",
   "filePath",
   "notebook_path",
-  "absolute_path",
-  "target_file",
   "path",
   "command",
   "cmd",

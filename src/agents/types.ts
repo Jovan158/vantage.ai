@@ -39,8 +39,6 @@ export interface LaunchPlan {
   notes: string[];
   /** The memory reached the agent. */
   memory: boolean;
-  /** More settings for the session's hook (see src/agents/hooks.ts). */
-  hookConfig?: Record<string, string>;
 }
 
 export interface Capabilities {
@@ -50,8 +48,6 @@ export interface Capabilities {
   enforce: "ask" | "deny-only" | "none";
   /** Alerts appear in its own chat while it runs. */
   chatAlerts: boolean;
-  /** Its hook is set up once with `vantage setup <agent>`. */
-  setup: boolean;
 }
 
 export interface AgentAdapter {

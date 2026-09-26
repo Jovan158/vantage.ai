@@ -142,7 +142,7 @@ export function hookInvocation(execPath: string, entry: string, extra: string[] 
 }
 
 // The same invocation as one shell command line, for agents that run hooks
-// through a shell (Codex, Gemini CLI, Cursor, Hermes, Antigravity). Every
+// through a shell (Codex). Every
 // part is quoted for the shell the agent uses on this platform.
 export function hookCommandLine(inv: HookInvocation, platform = process.platform): string {
   // A quoted program path is a string, not a command, to PowerShell; node

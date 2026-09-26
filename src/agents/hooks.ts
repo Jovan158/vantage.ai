@@ -8,16 +8,11 @@
 //
 // What the hook needs to know about the session (policy, rules file, budget,
 // alerts waiting) is in a small JSON file written by `vantage run`. Its path
-// is an argument of the hook command where Vantage registers the hook itself
-// for the session. For agents whose hooks can only be configured once, in
-// the user's own settings (`vantage setup`), the hook finds the running
-// session by the directory the agent works in; outside a Vantage session it
-// answers nothing and the agent carries on as if it were not there.
+// is an argument of the hook command, which Vantage registers with the agent
+// for that one session.
 
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { vantageHome, processAlive } from "../home.ts";
 
 // ---------------------------------------------------------------------------
 // The session's settings for the hook: the same names as the environment
@@ -42,50 +37,6 @@ export function readHookConfig(file: string | undefined): HookConfig | null {
   } catch {
     return null;
   }
-}
-
-// A running session of an agent whose hook was set up once (Gemini CLI,
-// Cursor, Hermes, Antigravity), registered by the directory the agent works in.
-function activePath(agent: string, dir: string): string {
-  const key = crypto.createHash("sha1").update(path.resolve(dir)).digest("hex").slice(0, 16);
-  return path.join(vantageHome(), "active", agent, `${key}.json`);
-}
-
-export function registerActive(agent: string, dirs: string[], configFile: string, pid = process.pid): () => void {
-  const files: string[] = [];
-  for (const dir of new Set(dirs.map((d) => path.resolve(d)))) {
-    const file = activePath(agent, dir);
-    try {
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, JSON.stringify({ config: configFile, pid, dir }));
-      files.push(file);
-    } catch {
-      /* the hook then stays out of this session */
-    }
-  }
-  return () => {
-    for (const f of files) fs.rmSync(f, { force: true });
-  };
-}
-
-// The config of the session running in one of these directories (or one of
-// their parents: an agent may report a subdirectory as its cwd).
-export function findActiveConfig(agent: string, dirs: string[]): string | null {
-  for (const start of dirs) {
-    let dir = path.resolve(start);
-    for (;;) {
-      try {
-        const entry = JSON.parse(fs.readFileSync(activePath(agent, dir), "utf8")) as { config?: string; pid?: number };
-        if (entry.config && typeof entry.pid === "number" && processAlive(entry.pid)) return entry.config;
-      } catch {
-        /* none here */
-      }
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -210,99 +161,10 @@ const copilot: HookProtocol = {
 // same call — so "ask" blocks, as with Codex.
 const opencode: HookProtocol = { ask: "none", parse: claudeParse, reply: (c, a) => claudeReply(c, a) };
 
-// Gemini CLI: BeforeTool answers { decision: "deny" | "ask", reason }; an
-// ask shows its systemMessage in the confirmation. AfterAgent (a reply is
-// finished) shows systemMessage in the chat; SessionStart takes
-// additionalContext.
-const gemini: HookProtocol = {
-  ask: "agent",
-  parse(raw) {
-    const j = json(raw);
-    if (!j) return null;
-    const name = str(j.hook_event_name);
-    const dirs = [str(j.cwd)].filter((d): d is string => !!d);
-    if (name === "AfterAgent") return { event: "stop", dirs };
-    if (name === "SessionStart") return { event: "start", dirs };
-    const tool = str(j.tool_name);
-    if (name !== "BeforeTool" || !tool) return name ? { event: "other", dirs } : null;
-    return { event: "tool", tool, input: obj(j.tool_input), dirs };
-  },
-  reply(call, a) {
-    if (call.event === "start") return out(a.context ? { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: a.context } } : null);
-    const message = a.alerts ? { systemMessage: a.alerts } : {};
-    if (call.event !== "tool" || !a.decision) return out(a.alerts ? message : null);
-    return out({ decision: a.decision, reason: a.reason, systemMessage: a.alerts ? `${a.reason}\n${a.alerts}` : a.reason });
-  },
-};
-
-// Hermes Agent: a shell hook on pre_tool_call answers { decision: "block",
-// reason } to block and { action: "approve", message } to send the call to
-// its approval prompt.
-const hermes: HookProtocol = {
-  ask: "agent",
-  parse(raw) {
-    const j = json(raw);
-    if (!j) return null;
-    const dirs = [str(j.cwd)].filter((d): d is string => !!d);
-    const tool = str(j.tool_name);
-    if (str(j.hook_event_name) !== "pre_tool_call" || !tool) return { event: "other", dirs };
-    return { event: "tool", tool, input: obj(j.tool_input), dirs };
-  },
-  reply(call, a) {
-    if (call.event !== "tool" || !a.decision) return out(null);
-    return out(a.decision === "deny" ? { decision: "block", reason: a.reason } : { action: "approve", message: a.reason });
-  },
-};
-
-// Cursor: preToolUse gets { tool_name, tool_input, workspace_roots } and
-// answers { permission, user_message, agent_message }. Older CLIs send only
-// beforeShellExecution ({ command }) and beforeReadFile ({ file_path }).
-const cursor: HookProtocol = {
-  ask: "agent",
-  parse(raw) {
-    const j = json(raw);
-    if (!j) return null;
-    const roots = Array.isArray(j.workspace_roots) ? j.workspace_roots.filter((r): r is string => typeof r === "string") : [];
-    const dirs = [str(j.cwd), ...roots].filter((d): d is string => !!d);
-    const name = str(j.hook_event_name);
-    if (name === "stop") return { event: "stop", dirs };
-    if (name === "beforeShellExecution") return { event: "tool", tool: "Shell", input: { command: str(j.command) ?? "" }, dirs };
-    if (name === "beforeReadFile") return { event: "tool", tool: "Read", input: { file_path: str(j.file_path) ?? "" }, dirs };
-    if (name === "beforeMCPExecution") return { event: "tool", tool: `mcp__${str(j.tool_name) ?? "tool"}`, input: obj(j.tool_input), dirs };
-    const tool = str(j.tool_name);
-    if (!tool) return name ? { event: "other", dirs } : null;
-    return { event: "tool", tool, input: obj(j.tool_input), dirs };
-  },
-  reply(call, a) {
-    if (call.event !== "tool" || !a.decision) return out({});
-    return out({ permission: a.decision, user_message: a.reason, agent_message: a.reason });
-  },
-};
-
-// Antigravity CLI: PreToolUse gets { toolCall: { name, args }, … } and
-// answers { decision, reason }; an empty answer changes nothing.
-const antigravity: HookProtocol = {
-  ask: "agent",
-  parse(raw) {
-    const j = json(raw);
-    if (!j) return null;
-    const workspaces = [j.workspacePaths, j.workspace_paths, j.workspaceRoots, j.workspaces].find(Array.isArray) as unknown[] | undefined;
-    const dirs = [str(j.cwd), ...(workspaces ?? []).filter((w): w is string => typeof w === "string")].filter((d): d is string => !!d);
-    const call = obj(j.toolCall) ?? obj(j.tool_call);
-    const tool = str(call?.name) ?? str(j.tool_name);
-    if (!tool) return { event: "other", dirs };
-    return { event: "tool", tool, input: obj(call?.args) ?? obj(call?.arguments) ?? obj(j.tool_input), dirs };
-  },
-  reply(call, a) {
-    if (call.event !== "tool" || !a.decision) return out(null);
-    return out({ decision: a.decision, reason: a.reason });
-  },
-};
-
 // pi: Vantage's extension speaks Claude's contract and asks through pi's UI.
 const pi: HookProtocol = claude;
 
-const PROTOCOLS: Record<string, HookProtocol> = { claude, codex, copilot, opencode, gemini, hermes, cursor, antigravity, pi };
+const PROTOCOLS: Record<string, HookProtocol> = { claude, codex, copilot, opencode, pi };
 
 export function hookProtocol(agent: string | undefined): HookProtocol {
   return PROTOCOLS[agent ?? "claude"] ?? claude;

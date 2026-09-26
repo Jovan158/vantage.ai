@@ -2,18 +2,14 @@
 
 import { claudeCode } from "./claude.ts";
 import { codex } from "./codex.ts";
-import { gemini } from "./gemini.ts";
 import { copilot } from "./copilot.ts";
 import { opencode } from "./opencode.ts";
 import { pi } from "./pi.ts";
-import { hermes } from "./hermes.ts";
-import { cursor } from "./cursor.ts";
-import { antigravity } from "./antigravity.ts";
 import type { AgentAdapter } from "./types.ts";
 
 export type { AgentAdapter, Capabilities, LaunchContext, LaunchPlan } from "./types.ts";
 
-export const AGENTS: AgentAdapter[] = [claudeCode, codex, copilot, gemini, opencode, pi, hermes, cursor, antigravity];
+export const AGENTS: AgentAdapter[] = [claudeCode, codex, copilot, opencode, pi];
 
 // By the name users type, or the id session logs show (`claude-code` is
 // accepted too, but not advertised: one name to learn).

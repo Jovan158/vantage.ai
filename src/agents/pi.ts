@@ -120,7 +120,7 @@ export const pi: AgentAdapter = {
   short: "pi",
   command: "pi",
   install: "npm install -g @earendil-works/pi-coding-agent",
-  capabilities: { meter: true, enforce: "ask", chatAlerts: true, setup: false },
+  capabilities: { meter: true, enforce: "ask", chatAlerts: true },
   routes: (env): Route[] => PI_HOSTS.map((host) => ({ prefix: `/h/${host}`, upstream: env.VANTAGE_UPSTREAM ?? `https://${host}` })),
   prepare(ctx) {
     const file = path.join(ctx.sessionDir, "vantage-pi.mjs");

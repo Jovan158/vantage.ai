@@ -2,15 +2,14 @@
 
 ## 0.2.0 — 2026-09-25
 
-### Eight more agents
-`vantage run` now starts Codex, GitHub Copilot CLI, Gemini CLI, OpenCode, pi, Hermes Agent, Cursor CLI and Antigravity CLI as well as Claude Code — `vantage run codex`, `vantage run gemini`, and so on. What works with each is in the README under *Supported agents*.
+### Four more agents
+`vantage run` now starts Codex, GitHub Copilot CLI, OpenCode and pi as well as Claude Code — `vantage run codex`, `vantage run copilot`, and so on. What works with each is in the README under *Supported agents*.
 
-- **Tokens and activity** for every agent whose API traffic can be read (all but Cursor, and Antigravity only with a Gemini API key). The proxy now reads the OpenAI Responses and Chat Completions APIs and the Gemini API besides Anthropic's, serves several providers in one session, and passes Codex's WebSocket through while reading it.
+- **Tokens and activity** for every agent. The proxy now reads the OpenAI Responses and Chat Completions APIs and the Gemini API besides Anthropic's, serves several providers in one session, and passes Codex's WebSocket through while reading it.
 - **Usage limits of a ChatGPT plan**: Codex's 5-hour and weekly windows appear in `vantage watch`, warn before they run out, and work with `--max-quota`.
-- **Rules and budgets** for all nine agents, through each one's own hooks. Codex and OpenCode can block but not ask from a hook: there an `ask` rule blocks and tells the agent to leave the action to you.
-- **`vantage setup <agent>`** adds Vantage's hook once to the settings of Gemini CLI, Hermes, Cursor and Antigravity, which take hooks from nowhere else. Outside a Vantage session it does nothing.
-- **Project memory** reaches Codex, Copilot CLI, Gemini CLI, OpenCode and pi too.
-- **`vantage doctor`** lists every agent it knows, whether it is installed and whether a setup is missing; `vantage doctor <agent>` checks one.
+- **Rules and budgets** for all five agents, through each one's own hooks. Codex and OpenCode can block but not ask from a hook: there an `ask` rule blocks and tells the agent to leave the action to you.
+- **Project memory** reaches Codex, Copilot CLI, OpenCode and pi too. Settings files stay untouched: hooks and memory are passed to each session on its own.
+- **`vantage doctor`** lists every agent it knows and whether it is installed; `vantage doctor <agent>` checks one.
 - Secret warnings, `watch`, `replay` and `search` name the agent that ran the session.
 
 ### Prices for GPT and Gemini models

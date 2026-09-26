@@ -165,8 +165,8 @@ function chatSse(p: Plan): string {
   return sse(events) + "data: [DONE]\n\n";
 }
 
-// A value that fits a JSON schema, for requests that ask for JSON (Gemini
-// CLI's model router): the first enum value, 1, true, "x".
+// A value that fits a JSON schema, for requests that ask for JSON: the
+// first enum value, 1, true, "x".
 function fill(schema: Record<string, unknown> | undefined): unknown {
   if (!schema) return {};
   if (Array.isArray(schema.enum)) return schema.enum[0];

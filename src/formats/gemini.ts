@@ -1,6 +1,6 @@
 // Google's Gemini API — POST …/models/<model>:generateContent and
-// :streamGenerateContent — as Gemini CLI, OpenCode and pi send it. Gemini
-// CLI signed in with a Google account talks to Code Assist instead
+// :streamGenerateContent — as OpenCode and pi send it. pi signed in with a
+// Google account talks to Code Assist instead
 // (…/v1internal:streamGenerateContent), which wraps the same request in
 // "request" and each response in "response"; both are read here.
 //

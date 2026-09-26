@@ -131,7 +131,7 @@ export const opencode: AgentAdapter = {
   command: "opencode",
   install: "npm install -g opencode-ai",
   // A plugin can stop a tool call but not ask about it (see hooks.ts).
-  capabilities: { meter: true, enforce: "deny-only", chatAlerts: true, setup: false },
+  capabilities: { meter: true, enforce: "deny-only", chatAlerts: true },
   routes: opencodeRoutes,
   prepare(ctx) {
     const env: Record<string, string> = {
