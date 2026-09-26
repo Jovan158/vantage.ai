@@ -47,8 +47,8 @@ export interface HookCall {
   event: "tool" | "stop" | "start" | "other";
   tool?: string;
   input?: Record<string, unknown>;
-  /** Directories the agent works in, most specific first. */
-  dirs: string[];
+  /** The directory the agent works in. */
+  cwd?: string;
 }
 
 export interface HookAnswer {
@@ -110,12 +110,12 @@ function claudeParse(raw: string): HookCall | null {
   const j = json(raw);
   if (!j) return null;
   const name = str(j.hook_event_name) ?? str(j.hookEventName);
-  const dirs = [str(j.cwd)].filter((d): d is string => !!d);
-  if (name === "Stop" || name === "SubagentStop") return { event: "stop", dirs };
-  if (name === "SessionStart") return { event: "start", dirs };
+  const cwd = str(j.cwd);
+  if (name === "Stop" || name === "SubagentStop") return { event: "stop", cwd };
+  if (name === "SessionStart") return { event: "start", cwd };
   const tool = str(j.tool_name) ?? str(j.toolName);
-  if (!tool) return name ? { event: "other", dirs } : null;
-  return { event: "tool", tool, input: obj(j.tool_input) ?? obj(j.toolArgs), dirs };
+  if (!tool) return name ? { event: "other", cwd } : null;
+  return { event: "tool", tool, input: obj(j.tool_input) ?? obj(j.toolArgs), cwd };
 }
 
 function claudeReply(call: HookCall, a: HookAnswer, extra: Record<string, unknown> = {}): HookReply {

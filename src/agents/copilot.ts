@@ -33,7 +33,7 @@ export const copilot: AgentAdapter = {
   short: "Copilot",
   command: "copilot",
   install: "npm install -g @github/copilot",
-  capabilities: { meter: true, enforce: "ask", chatAlerts: true },
+  capabilities: { enforce: "ask", chatAlerts: true },
   routes: (env) =>
     env.COPILOT_PROVIDER_BASE_URL
       ? [{ prefix: "/copilot-byok", upstream: env.VANTAGE_UPSTREAM ?? env.COPILOT_PROVIDER_BASE_URL }]

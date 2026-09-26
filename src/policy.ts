@@ -49,8 +49,8 @@ export function classifyTool(name: string): ActionType {
   if (known) return known;
   const n = name.toLowerCase();
   if (n.startsWith("mcp__")) return "network"; // MCP tools reach external services
-  if (/(write|edit|create|delete|remove|move|rename|patch|apply|replace|insert|save)/.test(n)) return "write";
-  if (/(fetch|http|url|web|curl|request|download|upload|browser)/.test(n)) return "network";
+  if (/(write|edit|create|delete|remove|move|rename|patch|apply)/.test(n)) return "write";
+  if (/(fetch|http|url|web|curl|request|download|upload)/.test(n)) return "network";
   if (/(bash|shell|exec|command|terminal|process)/.test(n)) return "shell";
   if (/(read|list|glob|grep|search|find|view|cat|show)/.test(n)) return "read";
   return "other";

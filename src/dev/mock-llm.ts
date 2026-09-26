@@ -165,31 +165,8 @@ function chatSse(p: Plan): string {
   return sse(events) + "data: [DONE]\n\n";
 }
 
-// A value that fits a JSON schema, for requests that ask for JSON: the
-// first enum value, 1, true, "x".
-function fill(schema: Record<string, unknown> | undefined): unknown {
-  if (!schema) return {};
-  if (Array.isArray(schema.enum)) return schema.enum[0];
-  const type = String(schema.type ?? "object").toLowerCase();
-  if (type === "object") {
-    const props = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
-    return Object.fromEntries(Object.entries(props).map(([k, v]) => [k, fill(v)]));
-  }
-  if (type === "array") return [];
-  if (type === "number" || type === "integer") return 1;
-  if (type === "boolean") return true;
-  return "x";
-}
-
-function wantsJson(body: unknown): Record<string, unknown> | null {
-  const b = (body ?? {}) as { generationConfig?: Record<string, unknown>; request?: { generationConfig?: Record<string, unknown> } };
-  const cfg = b.generationConfig ?? b.request?.generationConfig;
-  if (!cfg || cfg.responseMimeType !== "application/json") return null;
-  return ((cfg.responseJsonSchema ?? cfg.responseSchema) as Record<string, unknown>) ?? {};
-}
-
-function geminiChunks(p: Plan, wrap: boolean, json: Record<string, unknown> | null = null): object[] {
-  const parts = json ? [{ text: JSON.stringify(fill(json)) }] : p.call ? [{ functionCall: { name: p.call.name, args: p.call.args } }] : [{ text: p.text }];
+function geminiChunks(p: Plan, wrap: boolean): object[] {
+  const parts = p.call ? [{ functionCall: { name: p.call.name, args: p.call.args } }] : [{ text: p.text }];
   const r = {
     candidates: [{ content: { role: "model", parts }, finishReason: "STOP", index: 0 }],
     usageMetadata: { promptTokenCount: 400, candidatesTokenCount: 25, cachedContentTokenCount: 100, thoughtsTokenCount: 5, totalTokenCount: 430 },
@@ -234,7 +211,7 @@ export function startMockLlm(opts: MockOptions): Promise<RunningMockLlm> {
       if (req.method === "POST" && /:streamGenerateContent$/.test(p)) return stream(sse(geminiChunks(plan(body, opts), p.includes("v1internal"))));
       if (req.method === "POST" && /:generateContent$/.test(p)) {
         res.writeHead(200, { "content-type": "application/json" });
-        return res.end(JSON.stringify(geminiChunks(plan(body, opts), p.includes("v1internal"), wantsJson(body))[0]));
+        return res.end(JSON.stringify(geminiChunks(plan(body, opts), p.includes("v1internal"))[0]));
       }
       if (/\/models$/.test(p)) {
         res.writeHead(200, { "content-type": "application/json" });

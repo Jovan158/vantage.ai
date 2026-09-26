@@ -42,10 +42,8 @@ export interface LaunchPlan {
 }
 
 export interface Capabilities {
-  /** Tokens, cost and activity are read from its API traffic. */
-  meter: boolean;
-  /** Rules and budgets are enforced: "ask" works as ask, or blocks instead. */
-  enforce: "ask" | "deny-only" | "none";
+  /** How rules and budgets are enforced: "ask" works as ask, or blocks instead. */
+  enforce: "ask" | "deny-only";
   /** Alerts appear in its own chat while it runs. */
   chatAlerts: boolean;
 }
@@ -62,7 +60,7 @@ export interface AgentAdapter {
   /** Default executable. */
   command: string;
   capabilities: Capabilities;
-  /** Proxy routes for its providers; none when its traffic cannot be read. */
+  /** Proxy routes for its providers. */
   routes(env: NodeJS.ProcessEnv): Route[];
   /** Arguments, environment and files for one session. */
   prepare(ctx: LaunchContext): LaunchPlan;

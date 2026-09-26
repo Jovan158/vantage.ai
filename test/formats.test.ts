@@ -138,7 +138,7 @@ test("Code Assist wraps the same request and responses", () => {
   const t = geminiTurnFromJson(JSON.stringify([{ response: { candidates: [{ content: { parts: [{ text: "ok" }] } }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2 }, modelVersion: "gemini-3-flash" } }]));
   assert.equal(t?.model, "gemini-3-flash");
   assert.equal(t?.text, "ok");
-  const body = { model: "gemini-3-flash", request: { contents: [{ role: "user", parts: [{ text: "<session_context>setup</session_context>" }, { text: "add a test" }] }], tools: [{ functionDeclarations: [] }] } };
+  const body = { model: "gemini-3-flash", request: { contents: [{ role: "user", parts: [{ text: "<system-reminder>setup</system-reminder>" }, { text: "add a test" }] }], tools: [{ functionDeclarations: [] }] } };
   assert.deepEqual(geminiRequestInfo(body), { prompt: "add a test", background: false });
   assert.equal(geminiParts(body, "Gemini").some((p) => p.text === "add a test"), true);
 });

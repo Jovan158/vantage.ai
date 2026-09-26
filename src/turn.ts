@@ -321,7 +321,7 @@ function promptFrom(msgs: Array<{ role?: string; content?: unknown }>): string |
 // AGENTS.md as user messages in tags of their own. They are not what the user
 // typed, and at the front of a truncated preview they hide it completely — so
 // drop them. An unclosed block (body capture cut off) is dropped to the end.
-const INJECTED_TAGS = ["system-reminder", "environment_context", "user_instructions", "INSTRUCTIONS", "session_context", "current_datetime"];
+const INJECTED_TAGS = ["system-reminder", "environment_context", "user_instructions", "INSTRUCTIONS", "current_datetime"];
 
 export function stripInjectedContext(text: string): string {
   let out = text;

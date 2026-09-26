@@ -73,7 +73,7 @@ export const codex: AgentAdapter = {
   install: "npm install -g @openai/codex",
   // Its PreToolUse hook can block but not ask: an "ask" rule blocks, with a
   // reason that tells Codex to leave the action to the user.
-  capabilities: { meter: true, enforce: "deny-only", chatAlerts: true },
+  capabilities: { enforce: "deny-only", chatAlerts: true },
   routes: (env) => [
     {
       prefix: "/codex",

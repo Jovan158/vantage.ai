@@ -35,7 +35,7 @@ const answer = { decision: "deny" as const, reason: "no", alerts: "" };
 test("Claude's dialect, which Codex, Copilot, OpenCode and pi share", () => {
   const p = hookProtocol("claude");
   const call = p.parse(JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "ls" }, cwd: "/r" }))!;
-  assert.deepEqual(call, { event: "tool", tool: "Bash", input: { command: "ls" }, dirs: ["/r"] });
+  assert.deepEqual(call, { event: "tool", tool: "Bash", input: { command: "ls" }, cwd: "/r" });
   assert.deepEqual(JSON.parse(p.reply(call, answer).stdout).hookSpecificOutput, { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "no" });
   // No decision and no alerts: nothing at all, so the agent's own flow runs.
   assert.equal(p.reply(call, { decision: null, reason: "", alerts: "" }).stdout, "");

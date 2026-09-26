@@ -203,8 +203,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
   });
   recordLastSession({ cwd, sessionId });
 
-  // An agent whose API traffic cannot be read would run without a proxy.
-  const proxy: RunningProxy | null = routes.length === 0 ? null : await startProxy({
+  const proxy: RunningProxy = await startProxy({
     routes,
     agentName: adapter.name,
     // Lets watch say "Claude is thinking" while a chat turn is in flight.
@@ -254,16 +253,10 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
 
   // Enforce action-type policy through the agent's hook (②). Only the agent
   // can stop a tool it is about to run — the proxy never sees the execution.
-  // Agents without a hook mechanism stay observe-only, said plainly. A hook
-  // after each reply carries alerts into the chat.
+  // A hook after each reply carries alerts into the chat.
   const dir = sessionDir(cwd, sessionId);
   const enforcingRules = rules.filter((r) => r.level === "ask" || r.level === "deny");
-  const wantsEnforcement = needsEnforcement(effectivePolicy) || enforcingRules.length > 0 || guard !== null;
-  const canEnforce = adapter.capabilities.enforce !== "none";
-  if (wantsEnforcement && !canEnforce) {
-    log(`policy or budget needs enforcement, but ${adapter.name} exposes no hook mechanism — observe-only`);
-  }
-  const enforce = wantsEnforcement && canEnforce;
+  const enforce = needsEnforcement(effectivePolicy) || enforcingRules.length > 0 || guard !== null;
 
   // What the hook needs, as environment variables for hooks that inherit the
   // agent's environment and as a file named in the hook command for those
@@ -307,7 +300,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
   const hookConfigFile = path.join(dir, "hook-config.json");
   writeHookConfig(hookConfigFile, hookEnv);
   const plan = adapter.prepare({
-    proxyUrl: proxy?.url ?? "",
+    proxyUrl: proxy.url,
     sessionDir: dir,
     hook: hookInvocation(process.execPath, entry, [adapter.key, hookConfigFile]),
     enforce,
@@ -325,14 +318,10 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
 
   if (memory && plan.memory) log(`injected project memory (${memory.length} chars) via ${adapter.name}`);
 
-  if (proxy) {
-    const all = [...new Set(routes.map((r) => (typeof r.upstream === "string" ? r.upstream : `${r.prefix} (per request)`)))];
-    const upstreams = all.length > 3 ? `${all.slice(0, 2).join(", ")} and ${all.length - 2} more` : all.join(", ");
-    log(`session ${sessionId} · agent ${adapter.name} · upstream ${upstreams} (${proxy.via})`);
-    log(`proxy ${proxy.url} → ${adapter.command}`);
-  } else {
-    log(`session ${sessionId} · agent ${adapter.name} · its API traffic cannot be read, so no tokens or cost`);
-  }
+  const all = [...new Set(routes.map((r) => (typeof r.upstream === "string" ? r.upstream : `${r.prefix} (per request)`)))];
+  const upstreams = all.length > 3 ? `${all.slice(0, 2).join(", ")} and ${all.length - 2} more` : all.join(", ");
+  log(`session ${sessionId} · agent ${adapter.name} · upstream ${upstreams} (${proxy.via})`);
+  log(`proxy ${proxy.url} → ${adapter.command}`);
 
   // A launch that never gets going must still end its session — otherwise
   // `watch` shows it as running forever — and must not leave an empty
@@ -352,7 +341,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
     log(`could not launch ${adapter.command}: ${reason}`);
     eventLog.append({ ts: new Date().toISOString(), type: "session_end", exitCode: 127 });
     if (worktree) removeSessionWorktree(cwd, worktree.path, worktree.branch);
-    await proxy?.close();
+    await proxy.close();
     return 127;
   };
 
@@ -458,7 +447,7 @@ export async function cmdRun(argv: string[], entry: string): Promise<number> {
         log(`worth remembering? vantage harvest ${sessionId}`);
       }
 
-      await proxy?.close();
+      await proxy.close();
       resolve(code ?? 0);
     });
   });

@@ -45,7 +45,7 @@ export async function cmdHook(args: string[] = []): Promise<number> {
   } else if (call.event === "tool" && call.tool) {
     // With a budget: let the reply that asked for this tool be metered first.
     if (process.env.VANTAGE_BUDGET_FILE) await waitForMetering(process.env.VANTAGE_INFLIGHT_FILE);
-    const cwd = call.dirs[0] ?? process.cwd();
+    const cwd = call.cwd ?? process.cwd();
     const budget = readBudgetState(process.env.VANTAGE_BUDGET_FILE);
     const v = decide(call.tool, loadPolicy(cwd), budget, {
       input: call.input,
