@@ -7,7 +7,7 @@ export const SNAPSHOTS: Record<PriceProvider, PriceTable> = {
   anthropic: {
     provider: "anthropic",
     source: "https://platform.claude.com/docs/en/about-claude/pricing.md",
-    fetchedAt: "2026-09-23T09:53:50.491Z",
+    fetchedAt: "2026-10-05T14:55:11.891Z",
     models: {
       "claude-fable-5-1": { name: "Claude Fable 5.1", input: 10, cache_write_5m: 12.5, cache_write_1h: 20, cache_read: 0.25, output: 50 },
       "claude-mythos-5-1": { name: "Claude Mythos 5.1", input: 10, cache_write_5m: 12.5, cache_write_1h: 20, cache_read: 0.25, output: 50 },
@@ -27,12 +27,13 @@ export const SNAPSHOTS: Record<PriceProvider, PriceTable> = {
       "claude-sonnet-4": { name: "Claude Sonnet 4", input: 3, cache_write_5m: 3.75, cache_write_1h: 6, cache_read: 0.3, output: 15 },
       "claude-haiku-4-5": { name: "Claude Haiku 4.5", input: 1, cache_write_5m: 1.25, cache_write_1h: 2, cache_read: 0.1, output: 5 },
       "claude-3-5-haiku": { name: "Claude Haiku 3.5", input: 0.8, cache_write_5m: 1, cache_write_1h: 1.6, cache_read: 0.08, output: 4 },
+      "claude-sonnet-5-5": { name: "Claude Sonnet 5.5", input: 2, cache_write_5m: 2.5, cache_write_1h: 4, cache_read: 0.2, output: 10 },
     },
   },
   openai: {
     provider: "openai",
     source: "https://developers.openai.com/api/docs/pricing.md",
-    fetchedAt: "2026-09-25T16:58:58.000Z",
+    fetchedAt: "2026-10-05T14:55:12.329Z",
     models: {
       "gpt-6-astra": { name: "gpt-6-astra", input: 10, cache_write_5m: 12.5, cache_write_1h: 12.5, cache_read: 1, output: 50 },
       "gpt-6-sol": { name: "gpt-6-sol", input: 2, cache_write_5m: 2.5, cache_write_1h: 2.5, cache_read: 0.2, output: 10 },
@@ -79,12 +80,13 @@ export const SNAPSHOTS: Record<PriceProvider, PriceTable> = {
       "gpt-5.3-codex": { name: "gpt-5.3-codex", input: 1.75, cache_write_5m: 1.75, cache_write_1h: 1.75, cache_read: 0.175, output: 14 },
       "gpt-rosalind-research": { name: "gpt-rosalind-research", input: 5, cache_write_5m: 5, cache_write_1h: 5, cache_read: 0.5, output: 25 },
       "gpt-5-search-api": { name: "gpt-5-search-api", input: 1.25, cache_write_5m: 1.25, cache_write_1h: 1.25, cache_read: 0.125, output: 10 },
+      "gpt-6.1-sol": { name: "gpt-6.1-sol", input: 2, cache_write_5m: 2.5, cache_write_1h: 2.5, cache_read: 0.1, output: 10 },
     },
   },
   google: {
     provider: "google",
     source: "https://ai.google.dev/gemini-api/docs/pricing.md.txt",
-    fetchedAt: "2026-09-25T16:58:58.000Z",
+    fetchedAt: "2026-10-05T14:55:12.399Z",
     models: {
       "gemini-3.8-flash": { name: "Gemini 3.8 Flash", input: 0.75, cache_write_5m: 0.75, cache_write_1h: 0.75, cache_read: 0.075, output: 3.75, next: { from: "2027-01-01", input: 1.5, cache_write_5m: 1.5, cache_write_1h: 1.5, cache_read: 0.15, output: 7.5 } },
       "gemini-3.7-flash": { name: "Gemini 3.7 Flash", input: 0.75, cache_write_5m: 0.75, cache_write_1h: 0.75, cache_read: 0.075, output: 3.75, next: { from: "2027-01-01", input: 1.5, cache_write_5m: 1.5, cache_write_1h: 1.5, cache_read: 0.15, output: 7.5 } },
