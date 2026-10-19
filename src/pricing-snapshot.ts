@@ -7,7 +7,7 @@ export const SNAPSHOTS: Record<PriceProvider, PriceTable> = {
   anthropic: {
     provider: "anthropic",
     source: "https://platform.claude.com/docs/en/about-claude/pricing.md",
-    fetchedAt: "2026-10-12T15:42:09.956Z",
+    fetchedAt: "2026-10-19T13:34:27.151Z",
     models: {
       "claude-fable-5-1": { name: "Claude Fable 5.1", input: 10, cache_write_5m: 12.5, cache_write_1h: 20, cache_read: 0.25, output: 50 },
       "claude-mythos-5-1": { name: "Claude Mythos 5.1", input: 10, cache_write_5m: 12.5, cache_write_1h: 20, cache_read: 0.25, output: 50 },
@@ -34,7 +34,7 @@ export const SNAPSHOTS: Record<PriceProvider, PriceTable> = {
   openai: {
     provider: "openai",
     source: "https://developers.openai.com/api/docs/pricing.md",
-    fetchedAt: "2026-10-12T15:42:10.261Z",
+    fetchedAt: "2026-10-19T13:34:27.526Z",
     models: {
       "gpt-6-astra": { name: "gpt-6-astra", input: 10, cache_write_5m: 12.5, cache_write_1h: 12.5, cache_read: 1, output: 50 },
       "gpt-6-sol": { name: "gpt-6-sol", input: 2, cache_write_5m: 2.5, cache_write_1h: 2.5, cache_read: 0.2, output: 10 },
@@ -88,7 +88,7 @@ export const SNAPSHOTS: Record<PriceProvider, PriceTable> = {
   google: {
     provider: "google",
     source: "https://ai.google.dev/gemini-api/docs/pricing.md.txt",
-    fetchedAt: "2026-10-12T15:42:10.296Z",
+    fetchedAt: "2026-10-19T13:34:27.665Z",
     models: {
       "gemini-3.8-flash": { name: "Gemini 3.8 Flash", input: 0.75, cache_write_5m: 0.75, cache_write_1h: 0.75, cache_read: 0.075, output: 3.75, next: { from: "2027-01-01", input: 1.5, cache_write_5m: 1.5, cache_write_1h: 1.5, cache_read: 0.15, output: 7.5 } },
       "gemini-3.7-flash": { name: "Gemini 3.7 Flash", input: 0.75, cache_write_5m: 0.75, cache_write_1h: 0.75, cache_read: 0.075, output: 3.75, next: { from: "2027-01-01", input: 1.5, cache_write_5m: 1.5, cache_write_1h: 1.5, cache_read: 0.15, output: 7.5 } },
@@ -111,6 +111,7 @@ export const SNAPSHOTS: Record<PriceProvider, PriceTable> = {
       "gemini-3.8-live-extended-thinking": { name: "Gemini 3.8 Live, Gemini 3.8 Live Extended Thinking, and Gemini 3.1 Flash Live Preview", input: 0.75, cache_write_5m: 0.75, cache_write_1h: 0.75, cache_read: 0.75, output: 4.5 },
       "gemini-3.1-flash-live-preview": { name: "Gemini 3.8 Live, Gemini 3.8 Live Extended Thinking, and Gemini 3.1 Flash Live Preview", input: 0.75, cache_write_5m: 0.75, cache_write_1h: 0.75, cache_read: 0.75, output: 4.5 },
       "gemini-3.1-pro-preview-customtools": { name: "Gemini 3.1 Pro Preview", input: 2, cache_write_5m: 2, cache_write_1h: 2, cache_read: 0.2, output: 12, long: { above: 200000, input: 4, cache_write_5m: 4, cache_write_1h: 4, cache_read: 0.4, output: 18 } },
+      "gemini-4-argon": { name: "Gemini 4 Argon", input: 2, cache_write_5m: 2, cache_write_1h: 2, cache_read: 0.1, output: 10, next: { from: "2026-12-01", input: 4, cache_write_5m: 4, cache_write_1h: 4, cache_read: 0.1, output: 20 } },
     },
   },
 };
