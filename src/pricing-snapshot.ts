@@ -7,7 +7,7 @@ export const SNAPSHOTS: Record<PriceProvider, PriceTable> = {
   anthropic: {
     provider: "anthropic",
     source: "https://platform.claude.com/docs/en/about-claude/pricing.md",
-    fetchedAt: "2026-10-26T13:17:26.565Z",
+    fetchedAt: "2026-11-02T16:13:43.742Z",
     models: {
       "claude-fable-5-1": { name: "Claude Fable 5.1", input: 10, cache_write_5m: 12.5, cache_write_1h: 20, cache_read: 0.25, output: 50 },
       "claude-mythos-5-1": { name: "Claude Mythos 5.1", input: 10, cache_write_5m: 12.5, cache_write_1h: 20, cache_read: 0.25, output: 50 },
@@ -34,7 +34,7 @@ export const SNAPSHOTS: Record<PriceProvider, PriceTable> = {
   openai: {
     provider: "openai",
     source: "https://developers.openai.com/api/docs/pricing.md",
-    fetchedAt: "2026-10-26T13:17:26.996Z",
+    fetchedAt: "2026-11-02T16:13:44.185Z",
     models: {
       "gpt-6-astra": { name: "gpt-6-astra", input: 10, cache_write_5m: 10, cache_write_1h: 10, cache_read: 1, output: 50 },
       "gpt-6-sol": { name: "gpt-6-sol", input: 2, cache_write_5m: 2, cache_write_1h: 2, cache_read: 0.2, output: 10 },
@@ -83,12 +83,14 @@ export const SNAPSHOTS: Record<PriceProvider, PriceTable> = {
       "gpt-5-search-api": { name: "gpt-5-search-api", input: 1.25, cache_write_5m: 1.25, cache_write_1h: 1.25, cache_read: 0.125, output: 10 },
       "gpt-6.1-sol": { name: "gpt-6.1-sol", input: 2, cache_write_5m: 2, cache_write_1h: 2, cache_read: 0.1, output: 10 },
       "gpt-rosalind-discovery": { name: "gpt-rosalind-discovery", input: 5, cache_write_5m: 5, cache_write_1h: 5, cache_read: 0.5, output: 25 },
+      "gpt-6.1-terra": { name: "gpt-6.1-terra", input: 1, cache_write_5m: 1, cache_write_1h: 1, cache_read: 0.05, output: 5 },
+      "gpt-6-rosalind": { name: "gpt-6-rosalind", input: 15, cache_write_5m: 15, cache_write_1h: 15, cache_read: 1.5, output: 75 },
     },
   },
   google: {
     provider: "google",
     source: "https://ai.google.dev/gemini-api/docs/pricing.md.txt",
-    fetchedAt: "2026-10-26T13:17:27.094Z",
+    fetchedAt: "2026-11-02T16:13:44.333Z",
     models: {
       "gemini-3.8-flash": { name: "Gemini 3.8 Flash", input: 0.75, cache_write_5m: 0.75, cache_write_1h: 0.75, cache_read: 0.075, output: 3.75, next: { from: "2027-01-01", input: 1.5, cache_write_5m: 1.5, cache_write_1h: 1.5, cache_read: 0.15, output: 7.5 } },
       "gemini-3.7-flash": { name: "Gemini 3.7 Flash", input: 0.75, cache_write_5m: 0.75, cache_write_1h: 0.75, cache_read: 0.075, output: 3.75, next: { from: "2027-01-01", input: 1.5, cache_write_5m: 1.5, cache_write_1h: 1.5, cache_read: 0.15, output: 7.5 } },
